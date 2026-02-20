@@ -334,22 +334,22 @@ if (interaction.isButton() && interaction.customId.startsWith("ticket_claim_")) 
 
     claimedTickets.add(ch.id);
 
-    // Responde à interação de forma silenciosa
     await interaction.reply({ content: "✅ Você reivindicou este ticket!", flags: MessageFlags.Ephemeral });
 
     const parts = interaction.customId.split("_");
-    const openerId = parts[3] ?? null;
+    const channelId = parts[2] ?? null;
+    const openerId  = parts[3] ?? null;
 
-    // Atualiza as permissões
     await Promise.all([
       ...STAFF_ROLES.map(roleId => ch.permissionOverwrites.edit(roleId, { ViewChannel: false }).catch(() => {})),
       ch.permissionOverwrites.edit(interaction.user.id, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true }).catch(() => {}),
       openerId ? ch.permissionOverwrites.edit(openerId, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true }).catch(() => {}) : Promise.resolve(),
     ]);
 
-    // --- PARTE DA MUDANÇA DOS BOTÕES SEM TIRAR A EMBED ---
+    // Pega a data/hora e info do ticket original para reconstruir
+    // Vamos ler o conteúdo da mensagem original para extrair os dados
+    const originalMsg = interaction.message;
     
-    // Criamos os novos botões
     const btnFechar = new ButtonBuilder()
       .setCustomId(`ticket_close_${ch.id}_${openerId}`)
       .setLabel("Fechar Ticket")
@@ -361,21 +361,49 @@ if (interaction.isButton() && interaction.customId.startsWith("ticket_claim_")) 
       .setLabel(`Atendido por ${interaction.user.displayName}`)
       .setStyle(ButtonStyle.Secondary)
       .setEmoji("👤")
-      .setDisabled(true); // Fica cinza e não dá pra clicar
+      .setDisabled(true);
 
     const novaRow = new ActionRowBuilder().addComponents(btnFechar, btnReivindicado);
 
-    // Editamos a mensagem original: mantemos as embeds que já existiam e trocamos apenas os components
-    await interaction.message.edit({
-      embeds: interaction.message.embeds, // 👈 Isso mantém a embed original com hora/usuário
-      components: [novaRow]
+    // Reconstrói o container COMPLETO com a imagem + dados originais + novos botões
+    const now = new Date();
+    const dateStr = now.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+
+    // Extrai o texto original dos components para preservar os dados do ticket
+    let ticketInfo = "";
+    try {
+      const comps = originalMsg.components;
+      for (const comp of comps) {
+        if (comp.type === 17) { // Container
+          for (const child of comp.components) {
+            if (child.type === 10) { // TextDisplay
+              const txt = child.content ?? "";
+              if (txt.includes("Nome do Ticket")) ticketInfo = txt;
+            }
+          }
+        }
+      }
+    } catch {}
+
+    const updatedContainer = new ContainerBuilder()
+      .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(BANNERS.ticket)))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🎫 Ticket Aberto`))
+      .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+        ticketInfo || `**Criado Por:** <@${openerId}>`
+      ))
+      .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`))
+      .addActionRowComponents(novaRow);
+
+    await originalMsg.edit({
+      components: [updatedContainer],
+      flags: MessageFlags.IsComponentsV2
     }).catch(e => console.error("Erro ao editar botões:", e));
 
-    // Envia o aviso de que o staff chegou (opcional, se quiser deixar o chat limpo pode remover)
     const claimNotice = new ContainerBuilder()
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        `### 🤝 Atendimento Iniciado\n` +
-        `> O staff <@${interaction.user.id}> agora é o responsável por este ticket.`
+        `### 🤝 Atendimento Iniciado\n> O staff <@${interaction.user.id}> agora é o responsável por este ticket.`
       ));
 
     await ch.send({ components: [claimNotice], flags: MessageFlags.IsComponentsV2 });
