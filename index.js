@@ -328,65 +328,59 @@ if (interaction.isButton() && interaction.customId.startsWith("ticket_claim_")) 
 
     const ch = interaction.channel;
 
-    // 🔴 VERIFICA SE JÁ FOI REIVINDICADO
     if (claimedTickets.has(ch.id)) {
       return interaction.reply({ content: "❌ Este ticket já foi reivindicado por outro membro da staff.", flags: MessageFlags.Ephemeral });
     }
 
-    // 🟢 MARCA O TICKET COMO REIVINDICADO
     claimedTickets.add(ch.id);
 
-    await interaction.reply({ content: "✅ Ticket reivindicado!", flags: MessageFlags.Ephemeral });
+    // Responde à interação de forma silenciosa
+    await interaction.reply({ content: "✅ Você reivindicou este ticket!", flags: MessageFlags.Ephemeral });
 
-    const parts    = interaction.customId.split("_");
+    const parts = interaction.customId.split("_");
     const openerId = parts[3] ?? null;
 
+    // Atualiza as permissões
     await Promise.all([
       ...STAFF_ROLES.map(roleId => ch.permissionOverwrites.edit(roleId, { ViewChannel: false }).catch(() => {})),
       ch.permissionOverwrites.edit(interaction.user.id, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true }).catch(() => {}),
       openerId ? ch.permissionOverwrites.edit(openerId, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true }).catch(() => {}) : Promise.resolve(),
     ]);
 
-    const claimContainer = new ContainerBuilder()
+    // --- PARTE DA MUDANÇA DOS BOTÕES SEM TIRAR A EMBED ---
+    
+    // Criamos os novos botões
+    const btnFechar = new ButtonBuilder()
+      .setCustomId(`ticket_close_${ch.id}_${openerId}`)
+      .setLabel("Fechar Ticket")
+      .setStyle(ButtonStyle.Danger)
+      .setEmoji("🔒");
+
+    const btnReivindicado = new ButtonBuilder()
+      .setCustomId(`claimed_by_${interaction.user.id}`)
+      .setLabel(`Atendido por ${interaction.user.displayName}`)
+      .setStyle(ButtonStyle.Secondary)
+      .setEmoji("👤")
+      .setDisabled(true); // Fica cinza e não dá pra clicar
+
+    const novaRow = new ActionRowBuilder().addComponents(btnFechar, btnReivindicado);
+
+    // Editamos a mensagem original: mantemos as embeds que já existiam e trocamos apenas os components
+    await interaction.message.edit({
+      embeds: interaction.message.embeds, // 👈 Isso mantém a embed original com hora/usuário
+      components: [novaRow]
+    }).catch(e => console.error("Erro ao editar botões:", e));
+
+    // Envia o aviso de que o staff chegou (opcional, se quiser deixar o chat limpo pode remover)
+    const claimNotice = new ContainerBuilder()
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        `## 📋 Ticket Reivindicado\n\n` +
-        `> <@${interaction.user.id}> está atendendo este ticket.\n` +
-        (openerId ? `> <@${openerId}> seu ticket está sendo atendido!` : "")
-      ))
-      .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`));
+        `### 🤝 Atendimento Iniciado\n` +
+        `> O staff <@${interaction.user.id}> agora é o responsável por este ticket.`
+      ));
 
-// ... seu código de permissões e de enviar o Container "Ticket Reivindicado" ...
-    await ch.send({ components: [claimContainer], allowedMentions: { users: openerId ? [openerId] : [] }, flags: MessageFlags.IsComponentsV2 });
-
-    // 🔄 DESABILITAR O BOTÃO ORIGINAL VISUALMENTE
-    try {
-      const btnFechar = new ButtonBuilder()
-        .setCustomId(`ticket_close_${ch.id}_${openerId}`)
-        .setLabel("Fechar Ticket")
-        .setStyle(ButtonStyle.Danger)
-        .setEmoji("🔒");
-
-      const btnReivindicado = new ButtonBuilder()
-        .setCustomId(`ticket_claimed_disabled`) // Novo ID inútil para não engatilhar nada
-        .setLabel(`Atendido por ${interaction.user.displayName}`)
-        .setStyle(ButtonStyle.Secondary) // Cor cinza
-        .setEmoji("✅")
-        .setDisabled(true); // 👈 Impede novos cliques
-
-      const novoRow = new ActionRowBuilder().addComponents(btnFechar, btnReivindicado);
-
-      // Atualiza a mensagem original que contém os botões
-      await interaction.message.edit({ 
-        components: [novoRow] 
-        // Observação: Dependendo da versão V2 do Container, isso substituirá a row mantendo o design da base.
-      }).catch(() => {});
-    } catch (e) {
-      console.error("Erro ao desabilitar botão:", e);
-    }
-
+    await ch.send({ components: [claimNotice], flags: MessageFlags.IsComponentsV2 });
     return;
-  } // Fim do bloco ticket_claim_
+  }
 }
 
 async function sendWelcome(channel, member) {
