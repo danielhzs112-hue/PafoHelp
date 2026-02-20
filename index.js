@@ -70,11 +70,19 @@ client.on("guildMemberAdd", async (member) => {
 import { readFileSync, writeFileSync } from "fs";
 
 function loadTicketCount() {
-  try { return JSON.parse(readFileSync("./ticketcount.json", "utf8")).count ?? 0; }
-  catch { return 0; }
+  try {
+    const raw  = readFileSync("./ticketcount.json", "utf8");
+    const data = JSON.parse(raw);
+    return typeof data.count === "number" ? data.count : 0;
+  } catch {
+    // Arquivo ainda não existe — cria com 0 e avisa no console
+    writeFileSync("./ticketcount.json", JSON.stringify({ count: 0 }, null, 2));
+    console.log("⚠️  ticketcount.json criado do zero. Contagem iniciada em 0.");
+    return 0;
+  }
 }
 function saveTicketCount(n) {
-  writeFileSync("./ticketcount.json", JSON.stringify({ count: n }));
+  writeFileSync("./ticketcount.json", JSON.stringify({ count: n }, null, 2));
 }
 
 // ─── Memória em runtime ───────────────────────────────────────────────
