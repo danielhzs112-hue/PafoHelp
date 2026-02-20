@@ -307,7 +307,7 @@ async function handleInteraction(interaction) {
 
     const c = new ContainerBuilder()
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        `## <:icon_suplente_mod_1:1436350133884293221> Painel Staff\n` +
+        `## ⚙️ Painel Staff\n` +
         `Controle o ticket com as opções abaixo:`
       ))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
@@ -365,9 +365,11 @@ async function handleInteraction(interaction) {
     const ch        = interaction.guild.channels.cache.get(channelId);
 
     if (action === "notify_member") {
-      // Notifica o membro na DM
+      // Defer primeiro para evitar timeout do Discord
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
       const opener = await interaction.guild.members.fetch(openerId).catch(() => null);
-      if (!opener) return interaction.reply({ content: "❌ Não foi possível encontrar o membro.", flags: MessageFlags.Ephemeral });
+      if (!opener) return interaction.editReply({ content: "❌ Não foi possível encontrar o membro." });
 
       const dmContainer = new ContainerBuilder()
         .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(BANNERS.ticket)))
@@ -382,8 +384,8 @@ async function handleInteraction(interaction) {
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`));
 
       const sent = await opener.send({ components: [dmContainer], flags: MessageFlags.IsComponentsV2 }).catch(() => null);
-      if (!sent) return interaction.reply({ content: "❌ Não foi possível enviar DM para o membro (DMs fechadas).", flags: MessageFlags.Ephemeral });
-      return interaction.reply({ content: "✅ Membro notificado na DM com sucesso!", flags: MessageFlags.Ephemeral });
+      if (!sent) return interaction.editReply({ content: "❌ Não foi possível enviar DM para o membro (DMs fechadas)." });
+      return interaction.editReply({ content: "✅ Membro notificado na DM com sucesso!" });
     }
 
     if (action === "add_member") {
@@ -455,11 +457,17 @@ async function handleInteraction(interaction) {
     if (action === "notify_staff") {
       if (!ch) return interaction.reply({ content: "❌ Canal não encontrado.", flags: MessageFlags.Ephemeral });
       const staffMentions = STAFF_ROLES.map(id => `<@&${id}>`).join(" ");
+
+      // 1. Mensagem separada só com o ping (sem flags IsComponentsV2) para o ping funcionar
+      await ch.send({ content: staffMentions, allowedMentions: { parse: ["roles"] } });
+
+      // 2. Container visual separado
       const notifyContainer = new ContainerBuilder()
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-          `### 🔔 Staff Notificada\n> <@${openerId}> está aguardando atendimento!\n> ${staffMentions}`
+          `### 🔔 Staff Notificada\n> <@${openerId}> está aguardando atendimento!`
         ));
-      await ch.send({ content: staffMentions, components: [notifyContainer], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: ["roles"] } });
+      await ch.send({ components: [notifyContainer], flags: MessageFlags.IsComponentsV2 });
+
       return interaction.reply({ content: "✅ Staff notificada no canal!", flags: MessageFlags.Ephemeral });
     }
   }
@@ -546,10 +554,10 @@ async function handleInteraction(interaction) {
           .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
           .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`))
           .addActionRowComponents(new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId(`rate_${ticketName}_${openerId}_${claimerId ?? interaction.user.id}_1`).setLabel("⭐ 1").setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId(`rate_${ticketName}_${openerId}_${claimerId ?? interaction.user.id}_1`).setLabel("⭐ 1").setStyle(ButtonStyle.Danger),
             new ButtonBuilder().setCustomId(`rate_${ticketName}_${openerId}_${claimerId ?? interaction.user.id}_2`).setLabel("⭐ 2").setStyle(ButtonStyle.Secondary),
             new ButtonBuilder().setCustomId(`rate_${ticketName}_${openerId}_${claimerId ?? interaction.user.id}_3`).setLabel("⭐ 3").setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder().setCustomId(`rate_${ticketName}_${openerId}_${claimerId ?? interaction.user.id}_4`).setLabel("⭐ 4").setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId(`rate_${ticketName}_${openerId}_${claimerId ?? interaction.user.id}_4`).setLabel("⭐ 4").setStyle(ButtonStyle.Success),
             new ButtonBuilder().setCustomId(`rate_${ticketName}_${openerId}_${claimerId ?? interaction.user.id}_5`).setLabel("⭐ 5").setStyle(ButtonStyle.Success)
           ));
 
@@ -636,7 +644,10 @@ async function handleInteraction(interaction) {
     const openerId   = parts[parts.length - 3];
     const ticketName = parts.slice(1, parts.length - 3).join("_");
 
-    const stars = "⭐".repeat(nota);
+    // Defer imediatamente para evitar timeout (operação assíncrona longa)
+    await interaction.deferUpdate();
+
+    const stars   = "⭐".repeat(nota);
     const now     = new Date();
     const dateStr = now.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
@@ -652,16 +663,14 @@ async function handleInteraction(interaction) {
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`));
 
     await interaction.message.edit({ components: [confirmedDm], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
-    await interaction.reply({ content: "✅ Avaliação registrada! Obrigado.", flags: MessageFlags.Ephemeral }).catch(() => {});
 
-    // Envia avaliação pública no canal de reviews
-    const guild      = client.guilds.cache.first(); // busca a guild
-    const reviewCh   = guild?.channels.cache.get(REVIEW_CHANNEL_ID);
+    // Busca a guild pelo ID fixo (a interação vem de DM, não tem interaction.guild)
+    const GUILD_ID = "1449061779060687063";
+    const guild    = await client.guilds.fetch(GUILD_ID).catch(() => null);
+    if (!guild) { console.error("Guild não encontrada para enviar avaliação."); return; }
+
+    const reviewCh = await guild.channels.fetch(REVIEW_CHANNEL_ID).catch(() => null);
     if (reviewCh) {
-      // Cores por nota
-      const colors = [0xED4245, 0xFEE75C, 0xFEE75C, 0x57F287, 0x57F287];
-      const color  = colors[nota - 1] ?? 0x5865F2;
-
       const reviewContainer = new ContainerBuilder()
         .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(BANNERS.ticket)))
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## ⭐ Nova Avaliação de Atendimento`))
@@ -677,6 +686,8 @@ async function handleInteraction(interaction) {
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`));
 
       await reviewCh.send({ components: [reviewContainer], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
+    } else {
+      console.error(`Canal de avaliações ${REVIEW_CHANNEL_ID} não encontrado.`);
     }
     return;
   }
