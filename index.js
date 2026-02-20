@@ -74,6 +74,7 @@ function saveTicketCount(n) {
 const handled = new Set();
 const cmdCooldown = new Set();
 const ticketOpening = new Set();
+const claimedTickets = new Set();
 
 client.on("messageCreate", async (message) => {
   if (message.author.bot || !message.guild) return;
@@ -259,6 +260,8 @@ async function handleInteraction(interaction) {
     if (!isStaffMember(interaction.member))
       return interaction.reply({ content: "❌ Apenas a staff pode fechar tickets.", flags: MessageFlags.Ephemeral });
 
+    claimedTickets.delete(interaction.channel.id);
+
     await interaction.reply({ content: "🔒 Você fechou o ticket. O canal será deletado em **5 segundos**.", flags: MessageFlags.Ephemeral });
 
     const closeContainer = new ContainerBuilder()
@@ -291,15 +294,24 @@ async function handleInteraction(interaction) {
     return;
   }
 
-  if (interaction.isButton() && interaction.customId.startsWith("ticket_claim_")) {
+if (interaction.isButton() && interaction.customId.startsWith("ticket_claim_")) {
     if (!isStaffMember(interaction.member))
       return interaction.reply({ content: "❌ Apenas a staff pode reivindicar tickets.", flags: MessageFlags.Ephemeral });
+
+    const ch = interaction.channel;
+
+    // 🔴 VERIFICA SE JÁ FOI REIVINDICADO
+    if (claimedTickets.has(ch.id)) {
+      return interaction.reply({ content: "❌ Este ticket já foi reivindicado por outro membro da staff.", flags: MessageFlags.Ephemeral });
+    }
+
+    // 🟢 MARCA O TICKET COMO REIVINDICADO
+    claimedTickets.add(ch.id);
 
     await interaction.reply({ content: "✅ Ticket reivindicado!", flags: MessageFlags.Ephemeral });
 
     const parts    = interaction.customId.split("_");
     const openerId = parts[3] ?? null;
-    const ch       = interaction.channel;
 
     await Promise.all([
       ...STAFF_ROLES.map(roleId => ch.permissionOverwrites.edit(roleId, { ViewChannel: false }).catch(() => {})),
