@@ -25,10 +25,11 @@ import {
 } from "discord.js";
 
 const TOKEN = process.env.TOKEN;
-const VERIFIED_ROLE_ID   = "1464623361626734637";
-const WELCOME_CHANNEL_ID = "1449067457082949752";
-const LOG_CHANNEL_ID     = "1449525327175880865";
-const TICKET_CATEGORY_ID = "";
+const VERIFIED_ROLE_ID    = "1464623361626734637";
+const WELCOME_CHANNEL_ID  = "1449067457082949752";
+const LOG_CHANNEL_ID      = "1449525327175880865";
+const REVIEW_CHANNEL_ID   = "1462534733270614239"; // canal público de avaliações
+const TICKET_CATEGORY_ID  = "";
 const STAFF_ROLES = ["1449062440183664701","1449064374177104074","1454100805496868906"];
 const SERVER_ICON = "https://cdn.discordapp.com/icons/1449061779060687063/ecbd3ce76f39128b1ec08154e7faff75.png?size=2048";
 const BANNERS = {
@@ -42,7 +43,6 @@ const BANNERS = {
 };
 
 import { createServer } from "net";
-
 const lockServer = createServer();
 lockServer.on("error", () => {
   console.error("❌ Bot já está rodando! Feche a instância anterior (taskkill /F /IM node.exe) e tente novamente.");
@@ -51,7 +51,12 @@ lockServer.on("error", () => {
 lockServer.listen(19876, "127.0.0.1");
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+  ],
   partials: [Partials.Message, Partials.Channel, Partials.GuildMember],
 });
 
@@ -72,33 +77,42 @@ function saveTicketCount(n) {
   writeFileSync("./ticketcount.json", JSON.stringify({ count: n }));
 }
 
-const handled = new Set();
-const cmdCooldown = new Set();
-const ticketOpening = new Set();
+// ─── Memória em runtime ───────────────────────────────────────────────
+const handled        = new Set();
+const cmdCooldown    = new Set();
+const ticketOpening  = new Set();
 const claimedTickets = new Set();
 
+// Guarda dados do ticket: channelId → { ticketName, openerId, label, dateStr, claimerIdId }
+const ticketData     = new Map();
+
+// ─── Comandos ────────────────────────────────────────────────────────
 client.on("messageCreate", async (message) => {
   if (message.author.bot || !message.guild) return;
   if (handled.has(message.id)) return;
   handled.add(message.id);
   setTimeout(() => handled.delete(message.id), 10000);
+
   const member = message.member;
   if (!member || !member.permissions.has(PermissionFlagsBits.Administrator)) return;
+
   const content = message.content.trim().toLowerCase();
   const cmds = ["!verify","!rules","!booster","!info","!welcome","!loja","!ticket","!friendlys"];
   if (!cmds.includes(content)) return;
+
   const cooldownKey = `${message.channel.id}_${content}`;
   if (cmdCooldown.has(cooldownKey)) return;
   cmdCooldown.add(cooldownKey);
   setTimeout(() => cmdCooldown.delete(cooldownKey), 5000);
+
   await message.delete().catch(() => {});
-  if (content === "!verify")  return cmdVerify(message.channel);
-  if (content === "!rules")   return cmdRules(message.channel);
-  if (content === "!booster") return cmdBooster(message.channel);
-  if (content === "!info")    return cmdInfo(message.channel);
-  if (content === "!welcome") return sendWelcome(message.channel, message.member);
-  if (content === "!loja")    return cmdLoja(message.channel);
-  if (content === "!ticket")    return cmdTicket(message.channel);
+  if (content === "!verify")   return cmdVerify(message.channel);
+  if (content === "!rules")    return cmdRules(message.channel);
+  if (content === "!booster")  return cmdBooster(message.channel);
+  if (content === "!info")     return cmdInfo(message.channel);
+  if (content === "!welcome")  return sendWelcome(message.channel, message.member);
+  if (content === "!loja")     return cmdLoja(message.channel);
+  if (content === "!ticket")   return cmdTicket(message.channel);
   if (content === "!friendlys") return cmdFriendlys(message.channel);
 });
 
@@ -106,12 +120,14 @@ function isStaffMember(member) {
   return STAFF_ROLES.some(id => member.roles.cache.has(id)) || member.permissions.has(PermissionFlagsBits.Administrator);
 }
 
+// ─── Interactions ─────────────────────────────────────────────────────
 client.on("interactionCreate", (interaction) => {
   handleInteraction(interaction).catch((e) => console.error("Erro interaction:", e));
 });
 
 async function handleInteraction(interaction) {
 
+  // ── Verificação ──────────────────────────────────────────────────────
   if (interaction.isButton() && interaction.customId === "verify_button") {
     if (interaction.member.roles.cache.has(VERIFIED_ROLE_ID))
       return interaction.reply({ content: "✅ Você já está verificado!", flags: MessageFlags.Ephemeral });
@@ -126,7 +142,7 @@ async function handleInteraction(interaction) {
   if (interaction.isModalSubmit() && interaction.customId === "roblox_modal") {
     const robloxUser = interaction.fields.getTextInputValue("roblox_username");
     const member = interaction.member;
-    const role = interaction.guild.roles.cache.get(VERIFIED_ROLE_ID);
+    const role   = interaction.guild.roles.cache.get(VERIFIED_ROLE_ID);
     const newNick = `${member.displayName} (@${robloxUser})`.slice(0, 32);
     try {
       await member.setNickname(newNick).catch(() => {});
@@ -152,9 +168,9 @@ async function handleInteraction(interaction) {
     return interaction.reply({ components: [c], flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 });
   }
 
+  // ── Seleção de tipo de ticket ────────────────────────────────────────
   if (interaction.isStringSelectMenu() && interaction.customId === "ticket_select") {
     const tipo = interaction.values[0];
-    const labels = { duvidas: "❓ Dúvidas", parcerias: "🤝 Parcerias", compras: "🛒 Compras", denuncias: "🚨 Denúncias", outros: "📌 Outros" };
     const c = new ContainerBuilder()
       .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(BANNERS.ticket)))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 📋 Regras do Canal de Tickets`))
@@ -182,6 +198,7 @@ async function handleInteraction(interaction) {
     return interaction.reply({ content: "❌ Cancelado.", flags: MessageFlags.Ephemeral });
   }
 
+  // ── Confirmar abertura de ticket ─────────────────────────────────────
   if (interaction.isButton() && interaction.customId.startsWith("ticket_confirm_")) {
     const tipo   = interaction.customId.replace("ticket_confirm_", "");
     const labels = { duvidas: "Dúvidas", parcerias: "Parcerias", compras: "Compras", denuncias: "Denúncias", outros: "Outros" };
@@ -189,14 +206,14 @@ async function handleInteraction(interaction) {
     const guild  = interaction.guild;
     const user   = interaction.user;
 
-    if (ticketOpening.has(user.id)) {
+    if (ticketOpening.has(user.id))
       return interaction.reply({ content: "⏳ Já existe um ticket sendo criado para você. Aguarde.", flags: MessageFlags.Ephemeral }).catch(() => {});
-    }
     ticketOpening.add(user.id);
 
     const ticketCount = loadTicketCount() + 1;
     saveTicketCount(ticketCount);
-    const ticketName  = `ticket-${String(ticketCount).padStart(4, "0")}`;
+    const ticketName = `ticket-${String(ticketCount).padStart(4, "0")}`;
+
     const permsOverwrites = [
       { id: guild.roles.everyone, deny: [PermissionsBitField.Flags.ViewChannel] },
       { id: user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
@@ -206,6 +223,7 @@ async function handleInteraction(interaction) {
       if (guild.roles.cache.get(roleId))
         permsOverwrites.push({ id: roleId, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] });
     }
+
     const channelOptions = { name: ticketName, type: ChannelType.GuildText, permissionOverwrites: permsOverwrites };
     if (TICKET_CATEGORY_ID) channelOptions.parent = TICKET_CATEGORY_ID;
 
@@ -219,13 +237,18 @@ async function handleInteraction(interaction) {
     }
     ticketOpening.delete(user.id);
 
+    const now = new Date();
+    const dateStr = now.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+
+    // Salva dados do ticket na memória
+    ticketData.set(ticketChannel.id, { ticketName, openerId: user.id, label, dateStr, claimerId: null });
+
     interaction.reply({ content: `✅ Ticket criado em: <#${ticketChannel.id}>`, flags: MessageFlags.Ephemeral }).catch(() => {});
 
     const staffMentions = STAFF_ROLES.map(id => `<@&${id}>`).join(" ");
     await ticketChannel.send({ content: `<@${user.id}> ${staffMentions}`, allowedMentions: { parse: ["users", "roles"] } });
 
-    const now = new Date();
-    const dateStr = now.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    // Container do ticket com 3 botões + painéis
     const c = new ContainerBuilder()
       .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(BANNERS.ticket)))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🎫 Ticket Aberto`))
@@ -235,10 +258,17 @@ async function handleInteraction(interaction) {
       ))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`))
+      // Linha 1: Fechar + Reivindicar
       .addActionRowComponents(new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId(`ticket_close_${ticketChannel.id}_${user.id}`).setLabel("Fechar Ticket").setStyle(ButtonStyle.Danger).setEmoji("🔒"),
         new ButtonBuilder().setCustomId(`ticket_claim_${ticketChannel.id}_${user.id}`).setLabel("Reivindicar Ticket").setStyle(ButtonStyle.Primary).setEmoji("📋")
+      ))
+      // Linha 2: Painéis
+      .addActionRowComponents(new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`panel_staff_${ticketChannel.id}_${user.id}`).setLabel("Painel Staff").setStyle(ButtonStyle.Secondary).setEmoji({ id: "1436350133884293221", name: "icon_suplente_mod_1" }),
+        new ButtonBuilder().setCustomId(`panel_member_${ticketChannel.id}_${user.id}`).setLabel("Painel Membro").setStyle(ButtonStyle.Secondary).setEmoji("👤")
       ));
+
     await ticketChannel.send({ components: [c], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
 
     const logCh = guild.channels.cache.get(LOG_CHANNEL_ID);
@@ -246,10 +276,10 @@ async function handleInteraction(interaction) {
       await logCh.send({ embeds: [new EmbedBuilder()
         .setTitle("🎫 Ticket Aberto")
         .addFields(
-          { name: "Canal", value: `<#${ticketChannel.id}>`, inline: true },
-          { name: "Criado por", value: `<@${user.id}>`, inline: true },
-          { name: "Tipo", value: label, inline: true },
-          { name: "Data", value: dateStr, inline: true },
+          { name: "Canal",      value: `<#${ticketChannel.id}>`, inline: true },
+          { name: "Criado por", value: `<@${user.id}>`,          inline: true },
+          { name: "Tipo",       value: label,                    inline: true },
+          { name: "Data",       value: dateStr,                  inline: true },
         )
         .setColor(0x57F287).setFooter({ text: "PAFO — Ticket System", iconURL: SERVER_ICON }).setTimestamp()
       ]});
@@ -257,9 +287,190 @@ async function handleInteraction(interaction) {
     return;
   }
 
+  // ── Painel Staff ─────────────────────────────────────────────────────
+  if (interaction.isButton() && interaction.customId.startsWith("panel_staff_")) {
+    if (!isStaffMember(interaction.member))
+      return interaction.reply({ content: "❌ Apenas a staff pode usar o Painel Staff.", flags: MessageFlags.Ephemeral });
+
+    const parts     = interaction.customId.split("_");
+    const channelId = parts[2];
+    const openerId  = parts[3];
+
+    const select = new StringSelectMenuBuilder()
+      .setCustomId(`staff_action_${channelId}_${openerId}`)
+      .setPlaceholder("Selecione o que deseja fazer")
+      .addOptions(
+        new StringSelectMenuOptionBuilder().setLabel("Notificar Membro").setDescription("Envia um ping na DM do membro").setValue("notify_member").setEmoji("🔔"),
+        new StringSelectMenuOptionBuilder().setLabel("Adicionar Membro").setDescription("Adiciona um membro ao ticket").setValue("add_member").setEmoji("➕"),
+        new StringSelectMenuOptionBuilder().setLabel("Remover Membro").setDescription("Remove um membro do ticket").setValue("remove_member").setEmoji("➖")
+      );
+
+    const c = new ContainerBuilder()
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+        `## <:icon_suplente_mod_1:1436350133884293221> Painel Staff\n` +
+        `Controle o ticket com as opções abaixo:`
+      ))
+      .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+        `> 🔔 **Notificar Membro** — Envia uma mensagem na DM do membro\n` +
+        `> ➕ **Adicionar Membro** — Adiciona alguém ao ticket\n` +
+        `> ➖ **Remover Membro** — Remove alguém do ticket`
+      ))
+      .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Painel Staff`))
+      .addActionRowComponents(new ActionRowBuilder().addComponents(select));
+
+    return interaction.reply({ components: [c], flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 });
+  }
+
+  // ── Painel Membro ────────────────────────────────────────────────────
+  if (interaction.isButton() && interaction.customId.startsWith("panel_member_")) {
+    const parts    = interaction.customId.split("_");
+    const channelId = parts[2];
+    const openerId  = parts[3];
+
+    // Só o dono do ticket pode usar
+    if (interaction.user.id !== openerId)
+      return interaction.reply({ content: "❌ Apenas quem abriu o ticket pode usar o Painel Membro.", flags: MessageFlags.Ephemeral });
+
+    const select = new StringSelectMenuBuilder()
+      .setCustomId(`member_action_${channelId}_${openerId}`)
+      .setPlaceholder("Selecione o que deseja fazer")
+      .addOptions(
+        new StringSelectMenuOptionBuilder().setLabel("Notificar Staff").setDescription("Envia um ping para a staff no canal").setValue("notify_staff").setEmoji("🔔")
+      );
+
+    const c = new ContainerBuilder()
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+        `## 👤 Painel Membro\n` +
+        `Use as opções abaixo para interagir com a staff:`
+      ))
+      .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+        `> 🔔 **Notificar Staff** — Envia um ping para a staff no canal do ticket`
+      ))
+      .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Painel Membro`))
+      .addActionRowComponents(new ActionRowBuilder().addComponents(select));
+
+    return interaction.reply({ components: [c], flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 });
+  }
+
+  // ── Ações do Painel Staff ────────────────────────────────────────────
+  if (interaction.isStringSelectMenu() && interaction.customId.startsWith("staff_action_")) {
+    const parts     = interaction.customId.split("_");
+    const channelId = parts[2];
+    const openerId  = parts[3];
+    const action    = interaction.values[0];
+    const ch        = interaction.guild.channels.cache.get(channelId);
+
+    if (action === "notify_member") {
+      // Notifica o membro na DM
+      const opener = await interaction.guild.members.fetch(openerId).catch(() => null);
+      if (!opener) return interaction.reply({ content: "❌ Não foi possível encontrar o membro.", flags: MessageFlags.Ephemeral });
+
+      const dmContainer = new ContainerBuilder()
+        .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(BANNERS.ticket)))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🔔 Notificação do Ticket`))
+        .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+          `Olá, <@${openerId}>!\n\n` +
+          `A staff entrou em contato referente ao seu ticket.\n` +
+          `Por favor, acesse o canal do ticket para continuar o atendimento.`
+        ))
+        .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`));
+
+      const sent = await opener.send({ components: [dmContainer], flags: MessageFlags.IsComponentsV2 }).catch(() => null);
+      if (!sent) return interaction.reply({ content: "❌ Não foi possível enviar DM para o membro (DMs fechadas).", flags: MessageFlags.Ephemeral });
+      return interaction.reply({ content: "✅ Membro notificado na DM com sucesso!", flags: MessageFlags.Ephemeral });
+    }
+
+    if (action === "add_member") {
+      const modal = new ModalBuilder().setCustomId(`modal_add_${channelId}`).setTitle("Adicionar Membro ao Ticket");
+      modal.addComponents(new ActionRowBuilder().addComponents(
+        new TextInputBuilder().setCustomId("member_id").setLabel("ID do usuário a adicionar")
+          .setStyle(TextInputStyle.Short).setPlaceholder("Ex: 123456789012345678").setRequired(true).setMaxLength(20)
+      ));
+      return interaction.showModal(modal);
+    }
+
+    if (action === "remove_member") {
+      const modal = new ModalBuilder().setCustomId(`modal_remove_${channelId}`).setTitle("Remover Membro do Ticket");
+      modal.addComponents(new ActionRowBuilder().addComponents(
+        new TextInputBuilder().setCustomId("member_id").setLabel("ID do usuário a remover")
+          .setStyle(TextInputStyle.Short).setPlaceholder("Ex: 123456789012345678").setRequired(true).setMaxLength(20)
+      ));
+      return interaction.showModal(modal);
+    }
+  }
+
+  // ── Modal: Adicionar membro ──────────────────────────────────────────
+  if (interaction.isModalSubmit() && interaction.customId.startsWith("modal_add_")) {
+    const channelId = interaction.customId.replace("modal_add_", "");
+    const memberId  = interaction.fields.getTextInputValue("member_id").trim();
+    const ch        = interaction.guild.channels.cache.get(channelId);
+    if (!ch) return interaction.reply({ content: "❌ Canal não encontrado.", flags: MessageFlags.Ephemeral });
+
+    const target = await interaction.guild.members.fetch(memberId).catch(() => null);
+    if (!target) return interaction.reply({ content: "❌ Usuário não encontrado. Verifique o ID.", flags: MessageFlags.Ephemeral });
+
+    await ch.permissionOverwrites.edit(memberId, {
+      ViewChannel: true, SendMessages: true, ReadMessageHistory: true
+    }).catch(() => {});
+
+    const notice = new ContainerBuilder()
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+        `### ➕ Membro Adicionado\n> <@${memberId}> foi adicionado ao ticket por <@${interaction.user.id}>.`
+      ));
+    await ch.send({ components: [notice], flags: MessageFlags.IsComponentsV2 });
+    return interaction.reply({ content: `✅ <@${memberId}> adicionado ao ticket!`, flags: MessageFlags.Ephemeral });
+  }
+
+  // ── Modal: Remover membro ────────────────────────────────────────────
+  if (interaction.isModalSubmit() && interaction.customId.startsWith("modal_remove_")) {
+    const channelId = interaction.customId.replace("modal_remove_", "");
+    const memberId  = interaction.fields.getTextInputValue("member_id").trim();
+    const ch        = interaction.guild.channels.cache.get(channelId);
+    if (!ch) return interaction.reply({ content: "❌ Canal não encontrado.", flags: MessageFlags.Ephemeral });
+
+    await ch.permissionOverwrites.edit(memberId, { ViewChannel: false }).catch(() => {});
+
+    const notice = new ContainerBuilder()
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+        `### ➖ Membro Removido\n> <@${memberId}> foi removido do ticket por <@${interaction.user.id}>.`
+      ));
+    await ch.send({ components: [notice], flags: MessageFlags.IsComponentsV2 });
+    return interaction.reply({ content: `✅ <@${memberId}> removido do ticket!`, flags: MessageFlags.Ephemeral });
+  }
+
+  // ── Ação do Painel Membro ────────────────────────────────────────────
+  if (interaction.isStringSelectMenu() && interaction.customId.startsWith("member_action_")) {
+    const parts     = interaction.customId.split("_");
+    const channelId = parts[2];
+    const openerId  = parts[3];
+    const action    = interaction.values[0];
+    const ch        = interaction.guild.channels.cache.get(channelId);
+
+    if (action === "notify_staff") {
+      if (!ch) return interaction.reply({ content: "❌ Canal não encontrado.", flags: MessageFlags.Ephemeral });
+      const staffMentions = STAFF_ROLES.map(id => `<@&${id}>`).join(" ");
+      const notifyContainer = new ContainerBuilder()
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+          `### 🔔 Staff Notificada\n> <@${openerId}> está aguardando atendimento!\n> ${staffMentions}`
+        ));
+      await ch.send({ content: staffMentions, components: [notifyContainer], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: ["roles"] } });
+      return interaction.reply({ content: "✅ Staff notificada no canal!", flags: MessageFlags.Ephemeral });
+    }
+  }
+
+  // ── Fechar ticket ────────────────────────────────────────────────────
   if (interaction.isButton() && interaction.customId.startsWith("ticket_close_")) {
     if (!isStaffMember(interaction.member))
       return interaction.reply({ content: "❌ Apenas a staff pode fechar tickets.", flags: MessageFlags.Ephemeral });
+
+    const parts   = interaction.customId.split("_");
+    const openerId = parts[3] ?? null;
 
     claimedTickets.delete(interaction.channel.id);
 
@@ -273,72 +484,104 @@ async function handleInteraction(interaction) {
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`));
     await interaction.channel.send({ components: [closeContainer], flags: MessageFlags.IsComponentsV2 });
 
-const closedChannel = interaction.channel;
-    const parts = interaction.customId.split("_");
-    const openerId = parts[3] ?? null;
-    const logCh = interaction.guild.channels.cache.get(LOG_CHANNEL_ID);
-    
+    const closedChannel = interaction.channel;
+    const data          = ticketData.get(closedChannel.id);
+    const ticketName    = data?.ticketName ?? closedChannel.name;
+    const claimerId     = data?.claimerId  ?? null;
+    const logCh         = interaction.guild.channels.cache.get(LOG_CHANNEL_ID);
+
+    // ─ Transcript ─
+    let transcriptText = `📄 TRANSCRIPT DO TICKET: ${closedChannel.name}\nFechado por: ${interaction.user.tag}\n\n`;
+    try {
+      const messages  = await closedChannel.messages.fetch({ limit: 100 });
+      const msgsArray = Array.from(messages.values()).reverse();
+      msgsArray.forEach(m => {
+        const time    = m.createdAt.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
+        const author  = m.author ? m.author.tag : "Desconhecido";
+        const content = m.content || "[Mensagem sem texto, mídia ou embed]";
+        transcriptText += `[${time}] ${author}: ${content}\n`;
+      });
+    } catch (err) {
+      console.error("Erro ao gerar transcript:", err);
+      transcriptText += "\n⚠️ Erro ao carregar o histórico completo.";
+    }
+    const transcriptAttachment = new AttachmentBuilder(Buffer.from(transcriptText, "utf-8"), { name: `transcript-${closedChannel.name}.txt` });
+
+    const now     = new Date();
+    const dateStr = now.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+
     if (logCh) {
-      // 📜 1. GERANDO O TRANSCRIPT ANTES DE DELETAR
-      let transcriptText = `📄 TRANSCRIPT DO TICKET: ${closedChannel.name}\nFechado por: ${interaction.user.tag}\n\n`;
-      try {
-        // Busca as últimas 100 mensagens do canal
-        const messages = await closedChannel.messages.fetch({ limit: 100 });
-        const msgsArray = Array.from(messages.values()).reverse(); // Inverte para ordem cronológica
-        
-        msgsArray.forEach(m => {
-          const time = m.createdAt.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
-          const author = m.author ? m.author.tag : "Desconhecido";
-          const content = m.content || "[Mensagem sem texto, mídia ou embed]";
-          transcriptText += `[${time}] ${author}: ${content}\n`;
-        });
-      } catch (err) {
-        console.error("Erro ao gerar transcript:", err);
-        transcriptText += "\n⚠️ Erro ao carregar o histórico completo.";
-      }
-
-      // Cria o arquivo .txt com o histórico
-      const transcriptAttachment = new AttachmentBuilder(Buffer.from(transcriptText, "utf-8"), { name: `transcript-${closedChannel.name}.txt` });
-
-      // 2. ENVIANDO A LOG COM O ARQUIVO ANEXADO
-      const now = new Date();
-      const dateStr = now.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
-      await logCh.send({ 
+      await logCh.send({
         embeds: [new EmbedBuilder()
           .setTitle("🔒 Ticket Fechado")
           .addFields(
-            { name: "Canal", value: closedChannel.name, inline: true },
-            { name: "Fechado por", value: `<@${interaction.user.id}>`, inline: true },
+            { name: "Canal",      value: closedChannel.name,                           inline: true },
+            { name: "Fechado por",value: `<@${interaction.user.id}>`,                  inline: true },
             { name: "Criado por", value: openerId ? `<@${openerId}>` : "Desconhecido", inline: true },
-            { name: "Data", value: dateStr, inline: true },
+            { name: "Data",       value: dateStr,                                       inline: true },
           )
           .setColor(0xED4245).setFooter({ text: "PAFO — Ticket System", iconURL: SERVER_ICON }).setTimestamp()
         ],
-        files: [transcriptAttachment] // 👈 Anexa o arquivo na log
+        files: [transcriptAttachment]
       });
     }
 
+    // ─ DM de avaliação para quem abriu o ticket ─
+    if (openerId) {
+      const opener = await interaction.guild.members.fetch(openerId).catch(() => null);
+      if (opener) {
+        const dmContainer = new ContainerBuilder()
+          .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(BANNERS.ticket)))
+          .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🔒 Seu Ticket Foi Encerrado`))
+          .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+          .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+            `**Ticket:** \`${ticketName}\`\n` +
+            `**Fechado por:** <@${interaction.user.id}>\n` +
+            `**Data:** ${dateStr}`
+          ))
+          .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+          .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+            `⭐ **Como foi o nosso atendimento?**\nAvalie clicando em uma das opções abaixo:`
+          ))
+          .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
+          .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`))
+          .addActionRowComponents(new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId(`rate_${ticketName}_${openerId}_${claimerId ?? interaction.user.id}_1`).setLabel("⭐ 1").setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId(`rate_${ticketName}_${openerId}_${claimerId ?? interaction.user.id}_2`).setLabel("⭐ 2").setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId(`rate_${ticketName}_${openerId}_${claimerId ?? interaction.user.id}_3`).setLabel("⭐ 3").setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId(`rate_${ticketName}_${openerId}_${claimerId ?? interaction.user.id}_4`).setLabel("⭐ 4").setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId(`rate_${ticketName}_${openerId}_${claimerId ?? interaction.user.id}_5`).setLabel("⭐ 5").setStyle(ButtonStyle.Success)
+          ));
+
+        await opener.send({ components: [dmContainer], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+      }
+    }
+
+    ticketData.delete(closedChannel.id);
     setTimeout(() => { closedChannel.delete().catch(() => {}); }, 5000);
     return;
   }
 
-if (interaction.isButton() && interaction.customId.startsWith("ticket_claim_")) {
+  // ── Reivindicar ticket ───────────────────────────────────────────────
+  if (interaction.isButton() && interaction.customId.startsWith("ticket_claim_")) {
     if (!isStaffMember(interaction.member))
       return interaction.reply({ content: "❌ Apenas a staff pode reivindicar tickets.", flags: MessageFlags.Ephemeral });
 
     const ch = interaction.channel;
-
-    if (claimedTickets.has(ch.id)) {
+    if (claimedTickets.has(ch.id))
       return interaction.reply({ content: "❌ Este ticket já foi reivindicado por outro membro da staff.", flags: MessageFlags.Ephemeral });
-    }
 
     claimedTickets.add(ch.id);
-
     await interaction.reply({ content: "✅ Você reivindicou este ticket!", flags: MessageFlags.Ephemeral });
 
-    const parts = interaction.customId.split("_");
+    const parts     = interaction.customId.split("_");
     const channelId = parts[2] ?? null;
     const openerId  = parts[3] ?? null;
+
+    // Atualiza claimerId na memória
+    if (ticketData.has(ch.id)) {
+      ticketData.get(ch.id).claimerId = interaction.user.id;
+    }
 
     await Promise.all([
       ...STAFF_ROLES.map(roleId => ch.permissionOverwrites.edit(roleId, { ViewChannel: false }).catch(() => {})),
@@ -346,70 +589,100 @@ if (interaction.isButton() && interaction.customId.startsWith("ticket_claim_")) 
       openerId ? ch.permissionOverwrites.edit(openerId, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true }).catch(() => {}) : Promise.resolve(),
     ]);
 
-    // Pega a data/hora e info do ticket original para reconstruir
-    // Vamos ler o conteúdo da mensagem original para extrair os dados
-    const originalMsg = interaction.message;
-    
+    // Reconstrói container com banner preservado
+    const data      = ticketData.get(ch.id);
+    const ticketInfo = data
+      ? `**Nome do Ticket:** \`${data.ticketName}\`\n**Criado Por:** <@${data.openerId}>\n**Opened Date:** ${data.dateStr}\n**Ticket Type:** ${data.label}`
+      : `**Criado Por:** <@${openerId}>`;
+
     const btnFechar = new ButtonBuilder()
       .setCustomId(`ticket_close_${ch.id}_${openerId}`)
-      .setLabel("Fechar Ticket")
-      .setStyle(ButtonStyle.Danger)
-      .setEmoji("🔒");
+      .setLabel("Fechar Ticket").setStyle(ButtonStyle.Danger).setEmoji("🔒");
 
     const btnReivindicado = new ButtonBuilder()
       .setCustomId(`claimed_by_${interaction.user.id}`)
       .setLabel(`Atendido por ${interaction.user.displayName}`)
-      .setStyle(ButtonStyle.Secondary)
-      .setEmoji("👤")
-      .setDisabled(true);
-
-    const novaRow = new ActionRowBuilder().addComponents(btnFechar, btnReivindicado);
-
-    // Reconstrói o container COMPLETO com a imagem + dados originais + novos botões
-    const now = new Date();
-    const dateStr = now.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
-
-    // Extrai o texto original dos components para preservar os dados do ticket
-    let ticketInfo = "";
-    try {
-      const comps = originalMsg.components;
-      for (const comp of comps) {
-        if (comp.type === 17) { // Container
-          for (const child of comp.components) {
-            if (child.type === 10) { // TextDisplay
-              const txt = child.content ?? "";
-              if (txt.includes("Nome do Ticket")) ticketInfo = txt;
-            }
-          }
-        }
-      }
-    } catch {}
+      .setStyle(ButtonStyle.Secondary).setEmoji("👤").setDisabled(true);
 
     const updatedContainer = new ContainerBuilder()
       .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(BANNERS.ticket)))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🎫 Ticket Aberto`))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        ticketInfo || `**Criado Por:** <@${openerId}>`
-      ))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(ticketInfo))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`))
-      .addActionRowComponents(novaRow);
+      .addActionRowComponents(new ActionRowBuilder().addComponents(btnFechar, btnReivindicado))
+      .addActionRowComponents(new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`panel_staff_${ch.id}_${openerId}`).setLabel("Painel Staff").setStyle(ButtonStyle.Secondary).setEmoji({ id: "1436350133884293221", name: "icon_suplente_mod_1" }),
+        new ButtonBuilder().setCustomId(`panel_member_${ch.id}_${openerId}`).setLabel("Painel Membro").setStyle(ButtonStyle.Secondary).setEmoji("👤")
+      ));
 
-    await originalMsg.edit({
-      components: [updatedContainer],
-      flags: MessageFlags.IsComponentsV2
-    }).catch(e => console.error("Erro ao editar botões:", e));
+    await interaction.message.edit({ components: [updatedContainer], flags: MessageFlags.IsComponentsV2 }).catch(e => console.error("Erro ao editar:", e));
 
     const claimNotice = new ContainerBuilder()
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(
         `### 🤝 Atendimento Iniciado\n> O staff <@${interaction.user.id}> agora é o responsável por este ticket.`
       ));
-
     await ch.send({ components: [claimNotice], flags: MessageFlags.IsComponentsV2 });
     return;
   }
+
+  // ── Avaliação (DM) ───────────────────────────────────────────────────
+  if (interaction.isButton() && interaction.customId.startsWith("rate_")) {
+    // rate_<ticketName>_<openerId>_<claimerId>_<nota>
+    const parts      = interaction.customId.split("_");
+    const nota       = parseInt(parts[parts.length - 1]);
+    const claimerId  = parts[parts.length - 2];
+    const openerId   = parts[parts.length - 3];
+    const ticketName = parts.slice(1, parts.length - 3).join("_");
+
+    const stars = "⭐".repeat(nota);
+    const now     = new Date();
+    const dateStr = now.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+
+    // Edita a DM para mostrar que já avaliou
+    const confirmedDm = new ContainerBuilder()
+      .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(BANNERS.ticket)))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## ✅ Avaliação Enviada!`))
+      .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+        `Obrigado pelo seu feedback!\n\n**Sua nota:** ${stars} **(${nota}/5)**\n**Ticket:** \`${ticketName}\``
+      ))
+      .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`));
+
+    await interaction.message.edit({ components: [confirmedDm], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+    await interaction.reply({ content: "✅ Avaliação registrada! Obrigado.", flags: MessageFlags.Ephemeral }).catch(() => {});
+
+    // Envia avaliação pública no canal de reviews
+    const guild      = client.guilds.cache.first(); // busca a guild
+    const reviewCh   = guild?.channels.cache.get(REVIEW_CHANNEL_ID);
+    if (reviewCh) {
+      // Cores por nota
+      const colors = [0xED4245, 0xFEE75C, 0xFEE75C, 0x57F287, 0x57F287];
+      const color  = colors[nota - 1] ?? 0x5865F2;
+
+      const reviewContainer = new ContainerBuilder()
+        .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(BANNERS.ticket)))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## ⭐ Nova Avaliação de Atendimento`))
+        .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+          `**Ticket:** \`${ticketName}\`\n` +
+          `**Membro:** <@${openerId}>\n` +
+          `**Nota:** ${stars} **(${nota}/5)**\n` +
+          `**Staff Responsável:** <@${claimerId}>\n` +
+          `**Data:** ${dateStr}`
+        ))
+        .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`));
+
+      await reviewCh.send({ components: [reviewContainer], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
+    }
+    return;
+  }
 }
+
+// ─── Funções de comando ───────────────────────────────────────────────
 
 async function sendWelcome(channel, member) {
   const icon = member.guild.iconURL({ size: 1024 }) ?? SERVER_ICON;
@@ -595,48 +868,28 @@ async function cmdTicket(channel) {
 async function cmdFriendlys(channel) {
   const c = new ContainerBuilder()
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `## 📋 REGRAS OFICIAIS — PAFO FRIENDLYS
-
-` +
-      `Qualquer ato de **racismo**, **gordofobia**, **xenofobia** ou **discriminação** seja em servidor, privado ou qualquer outro meio:
-
-` +
-      `> Resultado: **Mute + Advertência**
-
-` +
-      `⚠️ Caso ocorra **DURANTE** um amistoso:
-` +
-      `> Resultado: **BANIMENTO**
-
-` +
+      `## 📋 REGRAS OFICIAIS — PAFO FRIENDLYS\n\n` +
+      `Qualquer ato de **racismo**, **gordofobia**, **xenofobia** ou **discriminação** seja em servidor, privado ou qualquer outro meio:\n\n` +
+      `> Resultado: **Mute + Advertência**\n\n` +
+      `⚠️ Caso ocorra **DURANTE** um amistoso:\n` +
+      `> Resultado: **BANIMENTO**\n\n` +
       `-# O usuário precisa estar no servidor para que a punição seja aplicada.`
     ))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Large).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `## 🚫 PENEIRAS IRREGULARES
-
-` +
-      `Realizar peneiras sem possuir o cargo: <@&1449070067131224268>
-
-` +
+      `## 🚫 PENEIRAS IRREGULARES\n\n` +
+      `Realizar peneiras sem possuir o cargo: <@&1449070067131224268>\n\n` +
       `> Resultado: **BANIMENTO**`
     ))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Large).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `## ⚠️ OBSERVAÇÕES IMPORTANTES
-
-` +
-      `> • Racismo, gordofobia, xenofobia e qualquer forma de preconceito se enquadram na mesma punição *(Mute + Adv)*
-` +
+      `## ⚠️ OBSERVAÇÕES IMPORTANTES\n\n` +
+      `> • Racismo, gordofobia, xenofobia e qualquer forma de preconceito se enquadram na mesma punição *(Mute + Adv)*\n` +
       `> • As regras são válidas **dentro e fora** do servidor`
     ))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Large).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `**Mais informações:**
-` +
-      `<#1454098611754373296>
-` +
-      `<#1449068500567068804>`
+      `**Mais informações:**\n<#1454098611754373296>\n<#1449068500567068804>`
     ))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# © 2026 PAFO — Friendlys Rules`));
