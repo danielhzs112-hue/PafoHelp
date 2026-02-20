@@ -21,6 +21,7 @@ import {
   StringSelectMenuOptionBuilder,
   ChannelType,
   PermissionsBitField,
+  AttachmentBuilder,
 } from "discord.js";
 
 const TOKEN = process.env.TOKEN;
@@ -272,24 +273,51 @@ async function handleInteraction(interaction) {
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`));
     await interaction.channel.send({ components: [closeContainer], flags: MessageFlags.IsComponentsV2 });
 
-    const closedChannel = interaction.channel;
+const closedChannel = interaction.channel;
     const parts = interaction.customId.split("_");
     const openerId = parts[3] ?? null;
     const logCh = interaction.guild.channels.cache.get(LOG_CHANNEL_ID);
+    
     if (logCh) {
+      // 📜 1. GERANDO O TRANSCRIPT ANTES DE DELETAR
+      let transcriptText = `📄 TRANSCRIPT DO TICKET: ${closedChannel.name}\nFechado por: ${interaction.user.tag}\n\n`;
+      try {
+        // Busca as últimas 100 mensagens do canal
+        const messages = await closedChannel.messages.fetch({ limit: 100 });
+        const msgsArray = Array.from(messages.values()).reverse(); // Inverte para ordem cronológica
+        
+        msgsArray.forEach(m => {
+          const time = m.createdAt.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
+          const author = m.author ? m.author.tag : "Desconhecido";
+          const content = m.content || "[Mensagem sem texto, mídia ou embed]";
+          transcriptText += `[${time}] ${author}: ${content}\n`;
+        });
+      } catch (err) {
+        console.error("Erro ao gerar transcript:", err);
+        transcriptText += "\n⚠️ Erro ao carregar o histórico completo.";
+      }
+
+      // Cria o arquivo .txt com o histórico
+      const transcriptAttachment = new AttachmentBuilder(Buffer.from(transcriptText, "utf-8"), { name: `transcript-${closedChannel.name}.txt` });
+
+      // 2. ENVIANDO A LOG COM O ARQUIVO ANEXADO
       const now = new Date();
       const dateStr = now.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
-      await logCh.send({ embeds: [new EmbedBuilder()
-        .setTitle("🔒 Ticket Fechado")
-        .addFields(
-          { name: "Canal", value: closedChannel.name, inline: true },
-          { name: "Fechado por", value: `<@${interaction.user.id}>`, inline: true },
-          { name: "Criado por", value: openerId ? `<@${openerId}>` : "Desconhecido", inline: true },
-          { name: "Data", value: dateStr, inline: true },
-        )
-        .setColor(0xED4245).setFooter({ text: "PAFO — Ticket System", iconURL: SERVER_ICON }).setTimestamp()
-      ]});
+      await logCh.send({ 
+        embeds: [new EmbedBuilder()
+          .setTitle("🔒 Ticket Fechado")
+          .addFields(
+            { name: "Canal", value: closedChannel.name, inline: true },
+            { name: "Fechado por", value: `<@${interaction.user.id}>`, inline: true },
+            { name: "Criado por", value: openerId ? `<@${openerId}>` : "Desconhecido", inline: true },
+            { name: "Data", value: dateStr, inline: true },
+          )
+          .setColor(0xED4245).setFooter({ text: "PAFO — Ticket System", iconURL: SERVER_ICON }).setTimestamp()
+        ],
+        files: [transcriptAttachment] // 👈 Anexa o arquivo na log
+      });
     }
+
     setTimeout(() => { closedChannel.delete().catch(() => {}); }, 5000);
     return;
   }
@@ -328,9 +356,37 @@ if (interaction.isButton() && interaction.customId.startsWith("ticket_claim_")) 
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`));
 
+// ... seu código de permissões e de enviar o Container "Ticket Reivindicado" ...
     await ch.send({ components: [claimContainer], allowedMentions: { users: openerId ? [openerId] : [] }, flags: MessageFlags.IsComponentsV2 });
+
+    // 🔄 DESABILITAR O BOTÃO ORIGINAL VISUALMENTE
+    try {
+      const btnFechar = new ButtonBuilder()
+        .setCustomId(`ticket_close_${ch.id}_${openerId}`)
+        .setLabel("Fechar Ticket")
+        .setStyle(ButtonStyle.Danger)
+        .setEmoji("🔒");
+
+      const btnReivindicado = new ButtonBuilder()
+        .setCustomId(`ticket_claimed_disabled`) // Novo ID inútil para não engatilhar nada
+        .setLabel(`Atendido por ${interaction.user.displayName}`)
+        .setStyle(ButtonStyle.Secondary) // Cor cinza
+        .setEmoji("✅")
+        .setDisabled(true); // 👈 Impede novos cliques
+
+      const novoRow = new ActionRowBuilder().addComponents(btnFechar, btnReivindicado);
+
+      // Atualiza a mensagem original que contém os botões
+      await interaction.message.edit({ 
+        components: [novoRow] 
+        // Observação: Dependendo da versão V2 do Container, isso substituirá a row mantendo o design da base.
+      }).catch(() => {});
+    } catch (e) {
+      console.error("Erro ao desabilitar botão:", e);
+    }
+
     return;
-  }
+  } // Fim do bloco ticket_claim_
 }
 
 async function sendWelcome(channel, member) {
