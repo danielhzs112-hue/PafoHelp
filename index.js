@@ -28,8 +28,9 @@ const TOKEN = process.env.TOKEN;
 const VERIFIED_ROLE_ID    = "1464623361626734637";
 const WELCOME_CHANNEL_ID  = "1449067457082949752";
 const LOG_CHANNEL_ID      = "1449525327175880865";
-const REVIEW_CHANNEL_ID   = "1462534733270614239"; // canal público de avaliações
-const TICKET_CATEGORY_ID  = "";
+const REVIEW_CHANNEL_ID    = "1462534733270614239"; // canal público de avaliações
+const FREEAGENT_CHANNEL_ID = "1469070513514086451"; // canal de free agents
+const TICKET_CATEGORY_ID   = "";
 const STAFF_ROLES = ["1449062440183664701","1449064374177104074","1454100805496868906"];
 const SERVER_ICON = "https://cdn.discordapp.com/icons/1449061779060687063/ecbd3ce76f39128b1ec08154e7faff75.png?size=2048";
 const BANNERS = {
@@ -94,6 +95,9 @@ const claimedTickets = new Set();
 // Guarda dados do ticket: channelId → { ticketName, openerId, label, dateStr, claimerIdId }
 const ticketData     = new Map();
 
+// Guarda dados de free agent: faId → { userId, tag, experiencias, habilidades, posicao, dispositivo, observacoes }
+const freeAgentData  = new Map();
+
 // ─── Comandos ────────────────────────────────────────────────────────
 client.on("messageCreate", async (message) => {
   if (message.author.bot || !message.guild) return;
@@ -122,6 +126,99 @@ client.on("messageCreate", async (message) => {
   if (content === "!loja")     return cmdLoja(message.channel);
   if (content === "!ticket")   return cmdTicket(message.channel);
   if (content === "!friendlys") return cmdFriendlys(message.channel);
+});
+
+
+// ─── Comando !freeagent (qualquer membro verificado) ──────────────────
+client.on("messageCreate", async (message) => {
+  if (message.author.bot || !message.guild) return;
+  if (!message.content.trim().toLowerCase().startsWith("!freeagent")) return;
+
+  const member = message.member;
+  if (!member) return;
+
+  // Qualquer membro pode usar (sem restrição de cargo)
+
+  // Cooldown por usuário (30s para evitar spam)
+  const cdKey = `fa_${member.id}`;
+  if (cmdCooldown.has(cdKey)) {
+    const warn = await message.reply({ content: "⏳ Aguarde antes de postar outro anúncio." }).catch(() => null);
+    setTimeout(() => warn?.delete().catch(() => {}), 5000);
+    return;
+  }
+
+  // Parse: !freeagent experiências, habilidades, posição, dispositivo, observações
+  const raw  = message.content.trim().slice("!freeagent".length).trim();
+  const args = raw.split(",").map(s => s.trim());
+
+  if (args.length < 5 || args.some(a => !a)) {
+    const warn = await message.reply({
+      content:
+        "❌ **Uso correto:**\n" +
+        "`!freeagent <experiências>, <habilidades>, <posição>, <dispositivo>, <observações>`\n\n" +
+        "**Exemplo:**\n" +
+        "`!freeagent 5 anos de mps 1 de tcs, incrivel, st cdm cm mc, PC, bom p krl!`"
+    }).catch(() => null);
+    setTimeout(() => warn?.delete().catch(() => {}), 10000);
+    return;
+  }
+
+  const [experiencias, habilidades, posicao, dispositivo, observacoes] = args;
+
+  // Gera ID único para este anúncio (para os botões)
+  const faId = `${member.id}_${Date.now()}`;
+
+  // Salva dados do anúncio na memória para os botões usarem
+  freeAgentData.set(faId, {
+    userId:       member.id,
+    tag:          member.user.tag,
+    experiencias, habilidades, posicao, dispositivo, observacoes,
+  });
+  // Expira em 7 dias
+  setTimeout(() => freeAgentData.delete(faId), 7 * 24 * 60 * 60 * 1000);
+
+  cmdCooldown.add(cdKey);
+  setTimeout(() => cmdCooldown.delete(cdKey), 30000);
+
+  await message.delete().catch(() => {});
+
+  const faCh = message.guild.channels.cache.get(FREEAGENT_CHANNEL_ID);
+  if (!faCh) return;
+
+  const c = new ContainerBuilder()
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🎮 Free Agent Disponível`))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `🧑 ***JOGADOR***\n→ <@${member.id}>`
+    ))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `⭐ ***EXPERIÊNCIAS***\n→ ${experiencias}`
+    ))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `⚡ ***HABILIDADES***\n→ ${habilidades}`
+    ))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `🎯 ***POSIÇÃO***\n→ ${posicao}`
+    ))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `📱 ***DISPOSITIVO***\n→ ${dispositivo}`
+    ))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `📝 ***OBSERVAÇÕES***\n→ ${observacoes}`
+    ))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Free Agent`))
+    .addActionRowComponents(new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`fa_contratar_${faId}`).setLabel("Contratar").setStyle(ButtonStyle.Success).setEmoji("🤝"),
+      new ButtonBuilder().setCustomId(`fa_sabermais_${faId}`).setLabel("Saber Mais").setStyle(ButtonStyle.Secondary).setEmoji("📋")
+    ));
+
+  await faCh.send({ components: [c], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
 });
 
 function isStaffMember(member) {
@@ -641,6 +738,94 @@ async function handleInteraction(interaction) {
       ));
     await ch.send({ components: [claimNotice], flags: MessageFlags.IsComponentsV2 });
     return;
+  }
+
+  // ── Free Agent: Contratar ───────────────────────────────────────────
+  if (interaction.isButton() && interaction.customId.startsWith("fa_contratar_")) {
+    const faId = interaction.customId.replace("fa_contratar_", "");
+    const fa   = freeAgentData.get(faId);
+
+    if (!fa) return interaction.reply({ content: "❌ Este anúncio expirou ou não foi encontrado.", flags: MessageFlags.Ephemeral });
+
+    // Não pode se contratar
+    if (interaction.user.id === fa.userId)
+      return interaction.reply({ content: "❌ Você não pode se contratar.", flags: MessageFlags.Ephemeral });
+
+    // Envia DM para o free agent
+    const targetMember = await interaction.guild.members.fetch(fa.userId).catch(() => null);
+    if (!targetMember) return interaction.reply({ content: "❌ Não foi possível encontrar o jogador.", flags: MessageFlags.Ephemeral });
+
+    const dmC = new ContainerBuilder()
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🤝 Proposta de Contratação`))
+      .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+        `Olá, <@${fa.userId}>! 👋\n\n` +
+        `<@${interaction.user.id}> viu seu anúncio de **Free Agent** e está interessado em você!\n\n` +
+        `📩 **Entre em contato:** <@${interaction.user.id}>\n` +
+        `🏷️ **Tag:** ${interaction.user.tag}`
+      ))
+      .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Free Agent`));
+
+    const sent = await targetMember.send({ components: [dmC], flags: MessageFlags.IsComponentsV2 }).catch(() => null);
+
+    if (!sent) return interaction.reply({ content: "❌ Não foi possível enviar DM para o jogador (DMs fechadas).", flags: MessageFlags.Ephemeral });
+
+    // Confirmação ephemeral para quem clicou
+    const confirmC = new ContainerBuilder()
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## ✅ Proposta Enviada!`))
+      .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+        `Sua proposta foi enviada para <@${fa.userId}>!\n` +
+        `Aguarde o contato dele no privado. 🎮`
+      ))
+      .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Free Agent`));
+
+    return interaction.reply({ components: [confirmC], flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 });
+  }
+
+  // ── Free Agent: Saber Mais ───────────────────────────────────────────
+  if (interaction.isButton() && interaction.customId.startsWith("fa_sabermais_")) {
+    const faId = interaction.customId.replace("fa_sabermais_", "");
+    const fa   = freeAgentData.get(faId);
+
+    if (!fa) return interaction.reply({ content: "❌ Este anúncio expirou ou não foi encontrado.", flags: MessageFlags.Ephemeral });
+
+    const profileC = new ContainerBuilder()
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 📋 Perfil Completo`))
+      .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+        `🧑 ***JOGADOR***\n→ <@${fa.userId}>`
+      ))
+      .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+        `⭐ ***EXPERIÊNCIAS***\n→ ${fa.experiencias}`
+      ))
+      .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+        `⚡ ***HABILIDADES***\n→ ${fa.habilidades}`
+      ))
+      .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+        `🎯 ***POSIÇÃO***\n→ ${fa.posicao}`
+      ))
+      .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+        `📱 ***DISPOSITIVO***\n→ ${fa.dispositivo}`
+      ))
+      .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+        `📝 ***OBSERVAÇÕES***\n→ ${fa.observacoes}`
+      ))
+      .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+        `> 💬 Para contratar, clique em **Contratar** no anúncio ou envie uma DM para <@${fa.userId}>.`
+      ))
+      .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Free Agent`));
+
+    return interaction.reply({ components: [profileC], flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 });
   }
 
   // ── Avaliação (DM) ───────────────────────────────────────────────────
