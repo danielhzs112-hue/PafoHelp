@@ -160,23 +160,8 @@ client.on("messageCreate", async (message) => {
 
   const [experiencias, habilidades, posicao, dispositivo, observacoes] = args;
 
-  // Dados embutidos no customId em base64url — não dependem de memória
-  const raw64 = Buffer.from(
-    [member.id, experiencias, habilidades, posicao, dispositivo, observacoes].join("\x00"),
-    "utf8"
-  ).toString("base64url");
-
-  const cidContratar = `fac_${raw64}`;
-  const cidSaber     = `fas_${raw64}`;
-
-  if (cidContratar.length > 100) {
-    const warn = await message.reply({
-      content: "❌ Seus campos são longos demais! Encurte um pouco e tente novamente."
-    }).catch(() => null);
-    setTimeout(() => warn?.delete().catch(() => {}), 8000);
-    return;
-  }
-
+  // customId só carrega userId + messageId (resolvido depois buscando a mensagem)
+  // messageId ainda não existe — usamos um placeholder, editamos após enviar
   cmdCooldown.add(cdKey);
   setTimeout(() => cmdCooldown.delete(cdKey), 30000);
 
@@ -185,6 +170,8 @@ client.on("messageCreate", async (message) => {
   const faCh = message.guild.channels.cache.get(FREEAGENT_CHANNEL_ID);
   if (!faCh) return;
 
+  // Envia primeiro com botões temporários, depois edita com o msgId real
+  const placeholder = "00000000000000000";
   const c = new ContainerBuilder()
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🎮 Free Agent Disponível`))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
@@ -202,11 +189,37 @@ client.on("messageCreate", async (message) => {
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Free Agent`))
     .addActionRowComponents(new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(cidContratar).setLabel("Contratar").setStyle(ButtonStyle.Success).setEmoji("🤝"),
-      new ButtonBuilder().setCustomId(cidSaber).setLabel("Saber Mais").setStyle(ButtonStyle.Secondary).setEmoji("📋")
+      new ButtonBuilder().setCustomId(`fac_${member.id}_${placeholder}`).setLabel("Contratar").setStyle(ButtonStyle.Success).setEmoji("🤝"),
+      new ButtonBuilder().setCustomId(`fas_${member.id}_${placeholder}`).setLabel("Saber Mais").setStyle(ButtonStyle.Secondary).setEmoji("📋")
     ));
 
-  await faCh.send({ components: [c], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
+  const sent = await faCh.send({ components: [c], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
+  if (!sent) return;
+
+  // Edita com o msgId real nos botões
+  const msgId = sent.id;
+  const c2 = new ContainerBuilder()
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🎮 Free Agent Disponível`))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`🧑 ***JOGADOR***\n→ <@${member.id}>`))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`⭐ ***EXPERIÊNCIAS***\n→ ${experiencias}`))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`⚡ ***HABILIDADES***\n→ ${habilidades}`))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`🎯 ***POSIÇÃO***\n→ ${posicao}`))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`📱 ***DISPOSITIVO***\n→ ${dispositivo}`))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`📝 ***OBSERVAÇÕES***\n→ ${observacoes}`))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Free Agent`))
+    .addActionRowComponents(new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`fac_${member.id}_${msgId}`).setLabel("Contratar").setStyle(ButtonStyle.Success).setEmoji("🤝"),
+      new ButtonBuilder().setCustomId(`fas_${member.id}_${msgId}`).setLabel("Saber Mais").setStyle(ButtonStyle.Secondary).setEmoji("📋")
+    ));
+
+  await sent.edit({ components: [c2], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
 });
 
 function isStaffMember(member) {
@@ -728,31 +741,52 @@ async function handleInteraction(interaction) {
     return;
   }
 
-  // ── Free Agent: helper decode ────────────────────────────────────────
-  function decodeFa(raw64) {
+  // ── Free Agent: helper — lê campos do container da mensagem ─────────
+  async function parseFaMessage(channelId, msgId) {
     try {
-      const parts = Buffer.from(raw64, "base64url").toString("utf8").split("\u0000");
-      if (parts.length < 6) return null;
-      return { userId: parts[0], experiencias: parts[1], habilidades: parts[2], posicao: parts[3], dispositivo: parts[4], observacoes: parts[5] };
+      const ch  = await client.channels.fetch(channelId).catch(() => null);
+      if (!ch) return null;
+      const msg = await ch.messages.fetch(msgId).catch(() => null);
+      if (!msg) return null;
+      // Extrai texto dos TextDisplay components do container
+      const texts = [];
+      for (const comp of msg.components) {
+        if (comp.type === 17) { // Container
+          for (const child of comp.components) {
+            if (child.type === 10) texts.push(child.content ?? ""); // TextDisplay
+          }
+        }
+      }
+      // Campos estão nas posições: 1=jogador,2=exp,3=hab,4=pos,5=disp,6=obs
+      const extract = (txt) => txt.includes("→") ? txt.split("→").slice(1).join("→").trim() : txt;
+      return {
+        userId:       texts[1] ? texts[1].replace(/[^0-9]/g, "").slice(0,20) : null,
+        experiencias: texts[2] ? extract(texts[2]) : "—",
+        habilidades:  texts[3] ? extract(texts[3]) : "—",
+        posicao:      texts[4] ? extract(texts[4]) : "—",
+        dispositivo:  texts[5] ? extract(texts[5]) : "—",
+        observacoes:  texts[6] ? extract(texts[6]) : "—",
+      };
     } catch { return null; }
   }
 
   // ── Free Agent: Contratar ─────────────────────────────────────────────
   if (interaction.isButton() && interaction.customId.startsWith("fac_")) {
-    const fa = decodeFa(interaction.customId.slice(4));
-    if (!fa) return interaction.reply({ content: "❌ Não foi possível ler os dados do anúncio.", flags: MessageFlags.Ephemeral });
+    const parts   = interaction.customId.split("_");
+    const userId  = parts[1];
+    const msgId   = parts[2];
 
-    if (interaction.user.id === fa.userId)
+    if (interaction.user.id === userId)
       return interaction.reply({ content: "❌ Você não pode se contratar.", flags: MessageFlags.Ephemeral });
 
-    const targetMember = await interaction.guild.members.fetch(fa.userId).catch(() => null);
+    const targetMember = await interaction.guild.members.fetch(userId).catch(() => null);
     if (!targetMember) return interaction.reply({ content: "❌ Jogador não encontrado no servidor.", flags: MessageFlags.Ephemeral });
 
     const dmC = new ContainerBuilder()
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🤝 Proposta de Contratação`))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        `Olá, <@${fa.userId}>! 👋
+        `Olá, <@${userId}>! 👋
 
 ` +
         `<@${interaction.user.id}> viu seu anúncio de **Free Agent** e está interessado em você!
@@ -772,7 +806,7 @@ async function handleInteraction(interaction) {
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## ✅ Proposta Enviada!`))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        `Sua proposta foi enviada para <@${fa.userId}>!
+        `Sua proposta foi enviada para <@${userId}>!
 Aguarde o contato dele no privado. 🎮`
       ))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
@@ -783,32 +817,35 @@ Aguarde o contato dele no privado. 🎮`
 
   // ── Free Agent: Saber Mais ────────────────────────────────────────────
   if (interaction.isButton() && interaction.customId.startsWith("fas_")) {
-    const fa = decodeFa(interaction.customId.slice(4));
-    if (!fa) return interaction.reply({ content: "❌ Não foi possível ler os dados do anúncio.", flags: MessageFlags.Ephemeral });
+    const parts  = interaction.customId.split("_");
+    const userId = parts[1];
+    const msgId  = parts[2];
+
+    const fa = await parseFaMessage(interaction.channel.id, msgId);
 
     const profileC = new ContainerBuilder()
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 📋 Perfil Completo`))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`🧑 ***JOGADOR***
-→ <@${fa.userId}>`))
+→ <@${userId}>`))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`⭐ ***EXPERIÊNCIAS***
-→ ${fa.experiencias}`))
+→ ${fa?.experiencias ?? "—"}`))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`⚡ ***HABILIDADES***
-→ ${fa.habilidades}`))
+→ ${fa?.habilidades ?? "—"}`))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`🎯 ***POSIÇÃO***
-→ ${fa.posicao}`))
+→ ${fa?.posicao ?? "—"}`))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`📱 ***DISPOSITIVO***
-→ ${fa.dispositivo}`))
+→ ${fa?.dispositivo ?? "—"}`))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`📝 ***OBSERVAÇÕES***
-→ ${fa.observacoes}`))
+→ ${fa?.observacoes ?? "—"}`))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        `> 💬 Para contratar, clique em **Contratar** no anúncio ou envie uma DM para <@${fa.userId}>.`
+        `> 💬 Para contratar, clique em **Contratar** no anúncio ou envie uma DM para <@${userId}>.`
       ))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Free Agent`));
