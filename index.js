@@ -1075,15 +1075,15 @@ async function cmdOlheiroRules(channel) {
       `**📋 Regras de Conduta:**\n` +
       `> • Enviar o link do servidor privado **no máximo 2 vezes**\n` +
       `> • **Proibido** enviar link de times\n` +
-      `> • Respeite os jogadores durante a peneira\n` +
+      `> • Respeite os Friendly Rules durante as scrims\n` +
       `> • Mantenha clareza na divulgação`
     ))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
       `**📝 Modelo de mensagem para peneiras:**\n\n` +
       "```\n" +
-      "# PENEIRA NOBRE!\n" +
-      "**O real nobres está atrás de novas lendas!**\n\n" +
+      "# PENEIRA!\n" +
+      "**O real madrid está atrás de novas lendas!**\n\n" +
       "# regras\n" +
       "**- não hoggar\n" +
       "- não fazer Ts\n" +
@@ -1119,7 +1119,7 @@ async function cmdScrimHosterRules(channel) {
       `**📋 Regras de Conduta:**\n` +
       `> • Enviar o link do servidor privado **no máximo 2 vezes**\n` +
       `> • **Proibido** enviar link de times\n` +
-      `> • Informe estádio, modo de jogo e juiz no anúncio\n` +
+      `> • Informe estádio, modo de jogo e juiz no anúncio (Opcional)\n` +
       `> • Respeite os Friendly Rules durante as scrims`
     ))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
@@ -1138,7 +1138,7 @@ async function cmdScrimHosterRules(channel) {
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
       `**🛒 Como obter o cargo de Scrim Hoster?**\n` +
       `> Veja a loja em <#${LOJA_CHANNEL_ID}> e compre por **300 Robux**.\n` +
-      `> ⚠️ Precisa do cargo **Olheiro** para realizar peneiras.\n` +
+      `> ⚠️ Precisa do cargo **Scrim Hoster** para realizar scrims.\n` +
       `> Depois abra um ticket para liberar o acesso.`
     ))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
@@ -1154,7 +1154,7 @@ async function cmdScrimHosterRules(channel) {
 // ─── NOVO: !drops ─────────────────────────────────────────────────────
 async function cmdDrops(channel) {
   const c = new ContainerBuilder()
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🎁 DROP DA PAFO`))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🎁 DROPS DA PAFO`))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
       `### 🏆 Drop de Olheiro, Scrim Hoster ou Pic Perm!\n\n` +
