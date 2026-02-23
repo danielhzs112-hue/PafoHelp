@@ -22,17 +22,25 @@ import {
   ChannelType,
   PermissionsBitField,
   AttachmentBuilder,
+  REST,
+  Routes,
+  SlashCommandBuilder,
 } from "discord.js";
 
-const TOKEN = process.env.TOKEN;
-const VERIFIED_ROLE_ID    = "1464623361626734637";
-const WELCOME_CHANNEL_ID  = "1449067457082949752";
-const LOG_CHANNEL_ID      = "1449525327175880865";
-const REVIEW_CHANNEL_ID    = "1462534733270614239"; // canal público de avaliações
-const FREEAGENT_CHANNEL_ID = "1461773344620941534"; // canal de free agents
+const TOKEN     = process.env.TOKEN;
+const CLIENT_ID = process.env.CLIENT_ID ?? ""; // Adicione CLIENT_ID no seu .env
+
+const VERIFIED_ROLE_ID     = "1464623361626734637";
+const WELCOME_CHANNEL_ID   = "1449067457082949752";
+const LOG_CHANNEL_ID       = "1449525327175880865";
+const REVIEW_CHANNEL_ID    = "1462534733270614239";
+const FREEAGENT_CHANNEL_ID = "1461773344620941534";
+const LOJA_CHANNEL_ID      = "1449518786825814036";
 const TICKET_CATEGORY_ID   = "";
+const GUILD_ID             = "1449061779060687063";
 const STAFF_ROLES = ["1449062440183664701","1449064374177104074","1454100805496868906"];
 const SERVER_ICON = "https://cdn.discordapp.com/icons/1449061779060687063/ecbd3ce76f39128b1ec08154e7faff75.png?size=2048";
+
 const BANNERS = {
   welcome : "https://cdn.discordapp.com/attachments/1462471559032865115/1474215814038159410/imagem_2026-02-19_222715260-Photoroom.png",
   verify  : "https://cdn.discordapp.com/attachments/1462471559032865115/1474218682153566371/imagem_2026-02-19_223847173-Photoroom.png",
@@ -43,14 +51,16 @@ const BANNERS = {
   ticket  : "https://cdn.discordapp.com/attachments/1469069997975535646/1474427362362916955/imagem_2026-02-20_122753297-Photoroom.png",
 };
 
+// ─── Port lock ────────────────────────────────────────────────────────
 import { createServer } from "net";
 const lockServer = createServer();
 lockServer.on("error", () => {
-  console.error("❌ Bot já está rodando! Feche a instância anterior (taskkill /F /IM node.exe) e tente novamente.");
+  console.error("❌ Bot já está rodando! Feche a instância anterior e tente novamente.");
   process.exit(1);
 });
 lockServer.listen(19876, "127.0.0.1");
 
+// ─── Client ───────────────────────────────────────────────────────────
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -61,73 +71,142 @@ const client = new Client({
   partials: [Partials.Message, Partials.Channel, Partials.GuildMember],
 });
 
-client.once("ready", () => console.log(`✅ Bot online: ${client.user.tag}`));
-
-client.on("guildMemberAdd", async (member) => {
-  const channel = member.guild.channels.cache.get(WELCOME_CHANNEL_ID);
-  if (channel) await sendWelcome(channel, member);
+client.once("ready", async () => {
+  console.log(`✅ Bot online: ${client.user.tag}`);
+  await registerSlashCommands();
+  checkTempRoles();
+  setInterval(checkTempRoles, 60_000);
 });
 
-import { readFileSync, writeFileSync } from "fs";
-
-function loadTicketCount() {
-  try {
-    const raw  = readFileSync("./ticketcount.json", "utf8");
-    const data = JSON.parse(raw);
-    return typeof data.count === "number" ? data.count : 0;
-  } catch {
-    // Arquivo ainda não existe — cria com 0 e avisa no console
-    writeFileSync("./ticketcount.json", JSON.stringify({ count: 0 }, null, 2));
-    console.log("⚠️  ticketcount.json criado do zero. Contagem iniciada em 0.");
-    return 0;
+// ─── Slash Commands ───────────────────────────────────────────────────
+async function registerSlashCommands() {
+  if (!CLIENT_ID) {
+    console.warn("⚠️  CLIENT_ID não definido. Slash commands não registrados.");
+    return;
   }
-}
-function saveTicketCount(n) {
-  writeFileSync("./ticketcount.json", JSON.stringify({ count: n }, null, 2));
+  const commands = [
+    new SlashCommandBuilder()
+      .setName("setroletemp")
+      .setDescription("Dá um cargo temporário a um membro")
+      .addUserOption(o => o.setName("usuario").setDescription("Membro que receberá o cargo").setRequired(true))
+      .addRoleOption(o => o.setName("cargo").setDescription("Cargo a conceder").setRequired(true))
+      .addIntegerOption(o => o.setName("dias").setDescription("Dias de duração").setRequired(true).setMinValue(1).setMaxValue(30))
+      .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+      .toJSON(),
+  ];
+  try {
+    const rest = new REST({ version: "10" }).setToken(TOKEN);
+    await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
+    console.log("✅ Slash commands registrados.");
+  } catch (e) { console.error("Erro ao registrar slash commands:", e); }
 }
 
-// ─── Memória em runtime ───────────────────────────────────────────────
+// ─── Persistence helpers ──────────────────────────────────────────────
+import { readFileSync, writeFileSync, existsSync } from "fs";
+
+function loadJSON(path, fallback) {
+  try {
+    if (!existsSync(path)) { writeFileSync(path, JSON.stringify(fallback, null, 2)); return fallback; }
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch { return fallback; }
+}
+function saveJSON(path, data) { writeFileSync(path, JSON.stringify(data, null, 2)); }
+
+function loadTicketCount() { return loadJSON("./ticketcount.json", { count: 0 }).count ?? 0; }
+function saveTicketCount(n) { saveJSON("./ticketcount.json", { count: n }); }
+function loadTempRoles()    { return loadJSON("./temproles.json", []); }
+function saveTempRoles(d)   { saveJSON("./temproles.json", d); }
+
+// ─── Temp Roles checker ───────────────────────────────────────────────
+async function checkTempRoles() {
+  const now  = Date.now();
+  const data = loadTempRoles();
+  const keep = [];
+  for (const entry of data) {
+    if (now >= entry.expiresAt) {
+      try {
+        const guild  = await client.guilds.fetch(entry.guildId).catch(() => null);
+        const member = guild ? await guild.members.fetch(entry.userId).catch(() => null) : null;
+        if (member?.roles.cache.has(entry.roleId)) {
+          await member.roles.remove(entry.roleId).catch(() => {});
+          const logCh = guild.channels.cache.get(LOG_CHANNEL_ID);
+          logCh?.send({ embeds: [new EmbedBuilder()
+            .setTitle("⏰ Cargo Temporário Expirado")
+            .setDescription(`<@${entry.userId}> teve o cargo <@&${entry.roleId}> removido após ${entry.days} dia(s).`)
+            .setColor(0xED4245).setFooter({ text: "PAFO — Temp Role System", iconURL: SERVER_ICON }).setTimestamp()
+          ]}).catch(() => {});
+        }
+      } catch (e) { console.error("Erro ao remover cargo temp:", e); }
+    } else { keep.push(entry); }
+  }
+  saveTempRoles(keep);
+}
+
+// ─── BRT date helper ──────────────────────────────────────────────────
+function getBRT() {
+  return new Date().toLocaleString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit", month: "2-digit", year: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  });
+}
+
+// ─── Runtime state ────────────────────────────────────────────────────
 const handled        = new Set();
 const cmdCooldown    = new Set();
 const ticketOpening  = new Set();
 const claimedTickets = new Set();
-
-// Guarda dados do ticket: channelId → { ticketName, openerId, label, dateStr, claimerIdId }
+// channelId → { ticketName, openerId, label, dateStr, claimerId, ratedSent }
 const ticketData     = new Map();
 
+// ─── guildMemberAdd ───────────────────────────────────────────────────
+client.on("guildMemberAdd", async (member) => {
+  const ch = member.guild.channels.cache.get(WELCOME_CHANNEL_ID);
+  if (ch) await sendWelcome(ch, member);
+});
 
-// ─── Comandos ────────────────────────────────────────────────────────
+// ─── Text commands (admin only) ───────────────────────────────────────
 client.on("messageCreate", async (message) => {
   if (message.author.bot || !message.guild) return;
   if (handled.has(message.id)) return;
   handled.add(message.id);
-  setTimeout(() => handled.delete(message.id), 10000);
+  setTimeout(() => handled.delete(message.id), 10_000);
 
   const member = message.member;
-  if (!member || !member.permissions.has(PermissionFlagsBits.Administrator)) return;
+  if (!member?.permissions.has(PermissionFlagsBits.Administrator)) return;
 
   const content = message.content.trim().toLowerCase();
-  const cmds = ["!verify","!rules","!booster","!info","!welcome","!loja","!ticket","!friendlys"];
+  const cmds = [
+    "!verify","!rules","!booster","!info","!welcome","!loja","!ticket","!friendlys",
+    "!olheiro-rules","!scrimhoster-rules","!drops","!bio-reward","!parceria",
+  ];
   if (!cmds.includes(content)) return;
 
-  const cooldownKey = `${message.channel.id}_${content}`;
-  if (cmdCooldown.has(cooldownKey)) return;
-  cmdCooldown.add(cooldownKey);
-  setTimeout(() => cmdCooldown.delete(cooldownKey), 5000);
-
+  const ck = `${message.channel.id}_${content}`;
+  if (cmdCooldown.has(ck)) return;
+  cmdCooldown.add(ck);
+  setTimeout(() => cmdCooldown.delete(ck), 5000);
   await message.delete().catch(() => {});
-  if (content === "!verify")   return cmdVerify(message.channel);
-  if (content === "!rules")    return cmdRules(message.channel);
-  if (content === "!booster")  return cmdBooster(message.channel);
-  if (content === "!info")     return cmdInfo(message.channel);
-  if (content === "!welcome")  return sendWelcome(message.channel, message.member);
-  if (content === "!loja")     return cmdLoja(message.channel);
-  if (content === "!ticket")   return cmdTicket(message.channel);
-  if (content === "!friendlys") return cmdFriendlys(message.channel);
+
+  const map = {
+    "!verify":           () => cmdVerify(message.channel),
+    "!rules":            () => cmdRules(message.channel),
+    "!booster":          () => cmdBooster(message.channel),
+    "!info":             () => cmdInfo(message.channel),
+    "!welcome":          () => sendWelcome(message.channel, message.member),
+    "!loja":             () => cmdLoja(message.channel),
+    "!ticket":           () => cmdTicket(message.channel),
+    "!friendlys":        () => cmdFriendlys(message.channel),
+    "!olheiro-rules":    () => cmdOlheiroRules(message.channel),
+    "!scrimhoster-rules":() => cmdScrimHosterRules(message.channel),
+    "!drops":            () => cmdDrops(message.channel),
+    "!bio-reward":       () => cmdBioReward(message.channel),
+    "!parceria":         () => cmdParceria(message.channel),
+  };
+  return map[content]?.();
 });
 
-
-// ─── Comando !freeagent (qualquer membro) ────────────────────────────
+// ─── !freeagent (qualquer membro) ────────────────────────────────────
 client.on("messageCreate", async (message) => {
   if (message.author.bot || !message.guild) return;
   if (!message.content.trim().toLowerCase().startsWith("!freeagent")) return;
@@ -135,70 +214,32 @@ client.on("messageCreate", async (message) => {
   const member = message.member;
   if (!member) return;
 
-  // Cooldown por usuário (30s)
   const cdKey = `fa_${member.id}`;
   if (cmdCooldown.has(cdKey)) {
-    const warn = await message.reply({ content: "⏳ Aguarde antes de postar outro anúncio." }).catch(() => null);
-    setTimeout(() => warn?.delete().catch(() => {}), 5000);
+    const w = await message.reply({ content: "⏳ Aguarde antes de postar outro anúncio." }).catch(() => null);
+    setTimeout(() => w?.delete().catch(() => {}), 5000);
     return;
   }
 
   const raw  = message.content.trim().slice("!freeagent".length).trim();
   const args = raw.split(",").map(s => s.trim());
-
   if (args.length < 5 || args.some(a => !a)) {
-    const warn = await message.reply({
-      content:
-        "❌ **Uso correto:**\n" +
-        "`!freeagent <experiências>, <habilidades>, <posição>, <dispositivo>, <observações>`\n\n" +
-        "**Exemplo:**\n" +
-        "`!freeagent 5 anos de mps, incrivel, st cdm cm, PC, bom p krl!`"
+    const w = await message.reply({
+      content: "❌ **Uso correto:**\n`!freeagent <experiências>, <habilidades>, <posição>, <dispositivo>, <observações>`\n\n**Exemplo:**\n`!freeagent 5 anos de mps, incrivel, st cdm cm, PC, bom p krl!`"
     }).catch(() => null);
-    setTimeout(() => warn?.delete().catch(() => {}), 10000);
+    setTimeout(() => w?.delete().catch(() => {}), 10_000);
     return;
   }
 
   const [experiencias, habilidades, posicao, dispositivo, observacoes] = args;
-
-  // customId só carrega userId + messageId (resolvido depois buscando a mensagem)
-  // messageId ainda não existe — usamos um placeholder, editamos após enviar
   cmdCooldown.add(cdKey);
-  setTimeout(() => cmdCooldown.delete(cdKey), 30000);
-
+  setTimeout(() => cmdCooldown.delete(cdKey), 30_000);
   await message.delete().catch(() => {});
 
   const faCh = message.guild.channels.cache.get(FREEAGENT_CHANNEL_ID);
   if (!faCh) return;
 
-  // Envia primeiro com botões temporários, depois edita com o msgId real
-  const placeholder = "00000000000000000";
-  const c = new ContainerBuilder()
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🎮 Free Agent Disponível`))
-    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`🧑 ***JOGADOR***\n→ <@${member.id}>`))
-    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`⭐ ***EXPERIÊNCIAS***\n→ ${experiencias}`))
-    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`⚡ ***HABILIDADES***\n→ ${habilidades}`))
-    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`🎯 ***POSIÇÃO***\n→ ${posicao}`))
-    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`📱 ***DISPOSITIVO***\n→ ${dispositivo}`))
-    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`📝 ***OBSERVAÇÕES***\n→ ${observacoes}`))
-    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Free Agent`))
-    .addActionRowComponents(new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(`fac_${member.id}_${placeholder}`).setLabel("Contratar").setStyle(ButtonStyle.Success).setEmoji("🤝"),
-      new ButtonBuilder().setCustomId(`fas_${member.id}_${placeholder}`).setLabel("Saber Mais").setStyle(ButtonStyle.Secondary).setEmoji("📋")
-    ));
-
-  const sent = await faCh.send({ components: [c], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
-  if (!sent) return;
-
-  // Edita com o msgId real nos botões
-  const msgId = sent.id;
-  const c2 = new ContainerBuilder()
+  const buildFa = (msgId) => new ContainerBuilder()
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🎮 Free Agent Disponível`))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`🧑 ***JOGADOR***\n→ <@${member.id}>`))
@@ -219,21 +260,62 @@ client.on("messageCreate", async (message) => {
       new ButtonBuilder().setCustomId(`fas_${member.id}_${msgId}`).setLabel("Saber Mais").setStyle(ButtonStyle.Secondary).setEmoji("📋")
     ));
 
-  await sent.edit({ components: [c2], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
+  const sent = await faCh.send({ components: [buildFa("00000000000000000")], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
+  if (sent) await sent.edit({ components: [buildFa(sent.id)], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
 });
 
-function isStaffMember(member) {
+// ─── Staff check ──────────────────────────────────────────────────────
+function isStaff(member) {
   return STAFF_ROLES.some(id => member.roles.cache.has(id)) || member.permissions.has(PermissionFlagsBits.Administrator);
 }
 
 // ─── Interactions ─────────────────────────────────────────────────────
-client.on("interactionCreate", (interaction) => {
-  handleInteraction(interaction).catch((e) => console.error("Erro interaction:", e));
-});
+client.on("interactionCreate", (i) => handleInteraction(i).catch(e => console.error("Erro interaction:", e)));
 
 async function handleInteraction(interaction) {
 
-  // ── Verificação ──────────────────────────────────────────────────────
+  // ── /setroletemp ─────────────────────────────────────────────────────
+  if (interaction.isChatInputCommand() && interaction.commandName === "setroletemp") {
+    if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator))
+      return interaction.reply({ content: "❌ Sem permissão.", flags: MessageFlags.Ephemeral });
+
+    const target = interaction.options.getMember("usuario");
+    const role   = interaction.options.getRole("cargo");
+    const dias   = interaction.options.getInteger("dias");
+    if (!target || !role || !dias)
+      return interaction.reply({ content: "❌ Parâmetros inválidos.", flags: MessageFlags.Ephemeral });
+
+    await target.roles.add(role).catch(() => {});
+    const expiresAt = Date.now() + dias * 86_400_000;
+    const data = loadTempRoles().filter(e => !(e.userId === target.id && e.roleId === role.id));
+    data.push({ userId: target.id, roleId: role.id, guildId: interaction.guild.id, expiresAt, days: dias });
+    saveTempRoles(data);
+
+    const expiresStr = new Date(expiresAt).toLocaleString("pt-BR", {
+      timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit"
+    });
+
+    await interaction.reply({ embeds: [new EmbedBuilder()
+      .setTitle("✅ Cargo Temporário Concedido")
+      .setDescription(`<@${target.id}> recebeu <@&${role.id}> por **${dias} dia(s)**.\nExpira: \`${expiresStr}\``)
+      .setColor(0x57F287).setFooter({ text: "PAFO — Temp Role System", iconURL: SERVER_ICON }).setTimestamp()
+    ]});
+
+    interaction.guild.channels.cache.get(LOG_CHANNEL_ID)?.send({ embeds: [new EmbedBuilder()
+      .setTitle("⏱️ Cargo Temporário Adicionado")
+      .addFields(
+        { name: "Membro",  value: `<@${target.id}>`,           inline: true },
+        { name: "Cargo",   value: `<@&${role.id}>`,            inline: true },
+        { name: "Dias",    value: `${dias}`,                   inline: true },
+        { name: "Expira",  value: expiresStr,                  inline: true },
+        { name: "Staff",   value: `<@${interaction.user.id}>`, inline: true },
+      )
+      .setColor(0xFEE75C).setFooter({ text: "PAFO — Temp Role System", iconURL: SERVER_ICON }).setTimestamp()
+    ]}).catch(() => {});
+    return;
+  }
+
+  // ── Verificação ───────────────────────────────────────────────────────
   if (interaction.isButton() && interaction.customId === "verify_button") {
     if (interaction.member.roles.cache.has(VERIFIED_ROLE_ID))
       return interaction.reply({ content: "✅ Você já está verificado!", flags: MessageFlags.Ephemeral });
@@ -264,17 +346,17 @@ async function handleInteraction(interaction) {
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## ❓ Por que verificar?`))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        `**🔒 Segurança**\nA verificação garante que apenas pessoas reais acessem o servidor.\n\n` +
-        `**🚫 Anti-Alt**\nImpedimos o uso de contas alternativas para burlar punições.\n\n` +
-        `**🌐 Comunidade Organizada**\nUma comunidade verificada é mais segura e agradável para todos.\n\n` +
-        `**🛡️ Proteção contra Spam**\nBots e contas de spam são bloqueados antes de causar danos.`
+        `**🔒 Segurança** — Apenas pessoas reais acessam o servidor.\n\n` +
+        `**🚫 Anti-Alt** — Impedimos contas alternativas para burlar punições.\n\n` +
+        `**🌐 Comunidade Organizada** — Mais segura e agradável para todos.\n\n` +
+        `**🛡️ Anti-Spam** — Bots e contas de spam bloqueados antes de causar danos.`
       ))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# © 2026 PAFO`));
     return interaction.reply({ components: [c], flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 });
   }
 
-  // ── Seleção de tipo de ticket ────────────────────────────────────────
+  // ── Ticket select ─────────────────────────────────────────────────────
   if (interaction.isStringSelectMenu() && interaction.customId === "ticket_select") {
     const tipo = interaction.values[0];
     const c = new ContainerBuilder()
@@ -285,14 +367,13 @@ async function handleInteraction(interaction) {
         `> • Abra tickets apenas quando necessário\n` +
         `> • Explique o assunto de forma clara e objetiva\n` +
         `> • Não faça spam nem cobre respostas da staff\n` +
-        `> • Tickets sem resposta por **12 horas** serão fechados por inatividade\n` +
+        `> • Tickets sem resposta por **12 horas** serão fechados\n` +
         `> • Mantenha o respeito em todas as situações\n` +
         `> • Em denúncias, envie provas *(prints, vídeos, links)*\n` +
-        `> • Apenas você e a staff podem enviar mensagens no ticket\n` +
-        `> • Em caso de denúncias por racismo, o usuário precisa estar no servidor`
+        `> • Em denúncias por racismo, o usuário precisa estar no servidor`
       ))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ⚠️ O descumprimento dessas regras pode resultar em fechamento do ticket ou punições adicionais.`))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ⚠️ O descumprimento pode resultar em fechamento do ticket ou punições.`))
       .addActionRowComponents(new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId(`ticket_confirm_${tipo}`).setLabel("Confirmar e Abrir Ticket").setStyle(ButtonStyle.Success).setEmoji("✅"),
         new ButtonBuilder().setCustomId("ticket_cancel").setLabel("Cancelar").setStyle(ButtonStyle.Danger).setEmoji("❌")
@@ -300,61 +381,51 @@ async function handleInteraction(interaction) {
     return interaction.reply({ components: [c], flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 });
   }
 
-  if (interaction.isButton() && interaction.customId === "ticket_cancel") {
+  if (interaction.isButton() && interaction.customId === "ticket_cancel")
     return interaction.reply({ content: "❌ Cancelado.", flags: MessageFlags.Ephemeral });
-  }
 
-  // ── Confirmar abertura de ticket ─────────────────────────────────────
+  // ── Confirmar ticket ──────────────────────────────────────────────────
   if (interaction.isButton() && interaction.customId.startsWith("ticket_confirm_")) {
     const tipo   = interaction.customId.replace("ticket_confirm_", "");
-    const labels = { duvidas: "Dúvidas", parcerias: "Parcerias", compras: "Compras", denuncias: "Denúncias", outros: "Outros" };
+    const labels = { duvidas:"Dúvidas", parcerias:"Parcerias", compras:"Compras", denuncias:"Denúncias", outros:"Outros" };
     const label  = labels[tipo] ?? tipo;
     const guild  = interaction.guild;
     const user   = interaction.user;
 
     if (ticketOpening.has(user.id))
-      return interaction.reply({ content: "⏳ Já existe um ticket sendo criado para você. Aguarde.", flags: MessageFlags.Ephemeral }).catch(() => {});
+      return interaction.reply({ content: "⏳ Já existe um ticket sendo criado. Aguarde.", flags: MessageFlags.Ephemeral });
     ticketOpening.add(user.id);
 
-    const ticketCount = loadTicketCount() + 1;
-    saveTicketCount(ticketCount);
-    const ticketName = `ticket-${String(ticketCount).padStart(4, "0")}`;
+    const num  = loadTicketCount() + 1;
+    saveTicketCount(num);
+    const ticketName = `ticket-${String(num).padStart(4, "0")}`;
 
-    const permsOverwrites = [
+    const overw = [
       { id: guild.roles.everyone, deny: [PermissionsBitField.Flags.ViewChannel] },
       { id: user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
       { id: client.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ManageChannels, PermissionsBitField.Flags.ReadMessageHistory] },
     ];
-    for (const roleId of STAFF_ROLES) {
-      if (guild.roles.cache.get(roleId))
-        permsOverwrites.push({ id: roleId, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] });
+    for (const rId of STAFF_ROLES) {
+      if (guild.roles.cache.get(rId))
+        overw.push({ id: rId, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] });
     }
 
-    const channelOptions = { name: ticketName, type: ChannelType.GuildText, permissionOverwrites: permsOverwrites };
-    if (TICKET_CATEGORY_ID) channelOptions.parent = TICKET_CATEGORY_ID;
+    const chOpts = { name: ticketName, type: ChannelType.GuildText, permissionOverwrites: overw };
+    if (TICKET_CATEGORY_ID) chOpts.parent = TICKET_CATEGORY_ID;
 
-    let ticketChannel;
-    try {
-      ticketChannel = await guild.channels.create(channelOptions);
-    } catch (e) {
-      console.error("Erro ao criar canal:", e);
-      ticketOpening.delete(user.id);
-      return;
-    }
+    let ticketCh;
+    try { ticketCh = await guild.channels.create(chOpts); }
+    catch (e) { console.error("Erro ao criar canal:", e); ticketOpening.delete(user.id); return; }
     ticketOpening.delete(user.id);
 
-    const now = new Date();
-    const dateStr = now.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    const dateStr = getBRT();
+    ticketData.set(ticketCh.id, { ticketName, openerId: user.id, label, dateStr, claimerId: null, ratedSent: false });
 
-    // Salva dados do ticket na memória
-    ticketData.set(ticketChannel.id, { ticketName, openerId: user.id, label, dateStr, claimerId: null });
-
-    interaction.reply({ content: `✅ Ticket criado em: <#${ticketChannel.id}>`, flags: MessageFlags.Ephemeral }).catch(() => {});
+    interaction.reply({ content: `✅ Ticket criado: <#${ticketCh.id}>`, flags: MessageFlags.Ephemeral }).catch(() => {});
 
     const staffMentions = STAFF_ROLES.map(id => `<@&${id}>`).join(" ");
-    await ticketChannel.send({ content: `<@${user.id}> ${staffMentions}`, allowedMentions: { parse: ["users", "roles"] } });
+    await ticketCh.send({ content: `<@${user.id}> ${staffMentions}`, allowedMentions: { parse: ["users","roles"] } });
 
-    // Container do ticket com 3 botões + painéis
     const c = new ContainerBuilder()
       .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(BANNERS.ticket)))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🎫 Ticket Aberto`))
@@ -364,44 +435,36 @@ async function handleInteraction(interaction) {
       ))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`))
-      // Linha 1: Fechar + Reivindicar
       .addActionRowComponents(new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`ticket_close_${ticketChannel.id}_${user.id}`).setLabel("Fechar Ticket").setStyle(ButtonStyle.Danger).setEmoji("🔒"),
-        new ButtonBuilder().setCustomId(`ticket_claim_${ticketChannel.id}_${user.id}`).setLabel("Reivindicar Ticket").setStyle(ButtonStyle.Primary).setEmoji("📋")
+        new ButtonBuilder().setCustomId(`ticket_close_${ticketCh.id}_${user.id}`).setLabel("Fechar Ticket").setStyle(ButtonStyle.Danger).setEmoji("🔒"),
+        new ButtonBuilder().setCustomId(`ticket_claim_${ticketCh.id}_${user.id}`).setLabel("Reivindicar Ticket").setStyle(ButtonStyle.Primary).setEmoji("📋")
       ))
-      // Linha 2: Painéis
       .addActionRowComponents(new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`panel_staff_${ticketChannel.id}_${user.id}`).setLabel("Painel Staff").setStyle(ButtonStyle.Secondary).setEmoji({ id: "1436350133884293221", name: "icon_suplente_mod_1" }),
-        new ButtonBuilder().setCustomId(`panel_member_${ticketChannel.id}_${user.id}`).setLabel("Painel Membro").setStyle(ButtonStyle.Secondary).setEmoji("👤")
+        new ButtonBuilder().setCustomId(`panel_staff_${ticketCh.id}_${user.id}`).setLabel("Painel Staff").setStyle(ButtonStyle.Secondary).setEmoji({ id:"1436350133884293221", name:"icon_suplente_mod_1" }),
+        new ButtonBuilder().setCustomId(`panel_member_${ticketCh.id}_${user.id}`).setLabel("Painel Membro").setStyle(ButtonStyle.Secondary).setEmoji("👤")
       ));
 
-    await ticketChannel.send({ components: [c], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
+    await ticketCh.send({ components: [c], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
 
-    const logCh = guild.channels.cache.get(LOG_CHANNEL_ID);
-    if (logCh) {
-      await logCh.send({ embeds: [new EmbedBuilder()
-        .setTitle("🎫 Ticket Aberto")
-        .addFields(
-          { name: "Canal",      value: `<#${ticketChannel.id}>`, inline: true },
-          { name: "Criado por", value: `<@${user.id}>`,          inline: true },
-          { name: "Tipo",       value: label,                    inline: true },
-          { name: "Data",       value: dateStr,                  inline: true },
-        )
-        .setColor(0x57F287).setFooter({ text: "PAFO — Ticket System", iconURL: SERVER_ICON }).setTimestamp()
-      ]});
-    }
+    guild.channels.cache.get(LOG_CHANNEL_ID)?.send({ embeds: [new EmbedBuilder()
+      .setTitle("🎫 Ticket Aberto")
+      .addFields(
+        { name: "Canal",      value: `<#${ticketCh.id}>`, inline: true },
+        { name: "Criado por", value: `<@${user.id}>`,     inline: true },
+        { name: "Tipo",       value: label,               inline: true },
+        { name: "Data",       value: dateStr,             inline: true },
+      )
+      .setColor(0x57F287).setFooter({ text: "PAFO — Ticket System", iconURL: SERVER_ICON }).setTimestamp()
+    ]});
     return;
   }
 
-  // ── Painel Staff ─────────────────────────────────────────────────────
+  // ── Painel Staff ──────────────────────────────────────────────────────
   if (interaction.isButton() && interaction.customId.startsWith("panel_staff_")) {
-    if (!isStaffMember(interaction.member))
+    if (!isStaff(interaction.member))
       return interaction.reply({ content: "❌ Apenas a staff pode usar o Painel Staff.", flags: MessageFlags.Ephemeral });
 
-    const parts     = interaction.customId.split("_");
-    const channelId = parts[2];
-    const openerId  = parts[3];
-
+    const [,, channelId, openerId] = interaction.customId.split("_");
     const select = new StringSelectMenuBuilder()
       .setCustomId(`staff_action_${channelId}_${openerId}`)
       .setPlaceholder("Selecione o que deseja fazer")
@@ -412,30 +475,20 @@ async function handleInteraction(interaction) {
       );
 
     const c = new ContainerBuilder()
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        `## ⚙️ Painel Staff\n` +
-        `Controle o ticket com as opções abaixo:`
-      ))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## ⚙️ Painel Staff\nControle o ticket com as opções abaixo:`))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        `> 🔔 **Notificar Membro** — Envia uma mensagem na DM do membro\n` +
-        `> ➕ **Adicionar Membro** — Adiciona alguém ao ticket\n` +
-        `> ➖ **Remover Membro** — Remove alguém do ticket`
+        `> 🔔 **Notificar Membro** — DM ao membro\n> ➕ **Adicionar Membro** — Adiciona ao ticket\n> ➖ **Remover Membro** — Remove do ticket`
       ))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Painel Staff`))
       .addActionRowComponents(new ActionRowBuilder().addComponents(select));
-
     return interaction.reply({ components: [c], flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 });
   }
 
-  // ── Painel Membro ────────────────────────────────────────────────────
+  // ── Painel Membro ─────────────────────────────────────────────────────
   if (interaction.isButton() && interaction.customId.startsWith("panel_member_")) {
-    const parts    = interaction.customId.split("_");
-    const channelId = parts[2];
-    const openerId  = parts[3];
-
-    // Só o dono do ticket pode usar
+    const [,, channelId, openerId] = interaction.customId.split("_");
     if (interaction.user.id !== openerId)
       return interaction.reply({ content: "❌ Apenas quem abriu o ticket pode usar o Painel Membro.", flags: MessageFlags.Ephemeral });
 
@@ -447,51 +500,38 @@ async function handleInteraction(interaction) {
       );
 
     const c = new ContainerBuilder()
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        `## 👤 Painel Membro\n` +
-        `Use as opções abaixo para interagir com a staff:`
-      ))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 👤 Painel Membro\nUse as opções abaixo para interagir com a staff:`))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        `> 🔔 **Notificar Staff** — Envia um ping para a staff no canal do ticket`
-      ))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`> 🔔 **Notificar Staff** — Envia um ping para a staff no canal do ticket`))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Painel Membro`))
       .addActionRowComponents(new ActionRowBuilder().addComponents(select));
-
     return interaction.reply({ components: [c], flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 });
   }
 
-  // ── Ações do Painel Staff ────────────────────────────────────────────
+  // ── Staff actions ─────────────────────────────────────────────────────
   if (interaction.isStringSelectMenu() && interaction.customId.startsWith("staff_action_")) {
-    const parts     = interaction.customId.split("_");
-    const channelId = parts[2];
-    const openerId  = parts[3];
-    const action    = interaction.values[0];
-    const ch        = interaction.guild.channels.cache.get(channelId);
+    const [,, channelId, openerId] = interaction.customId.split("_");
+    const action = interaction.values[0];
+    const ch = interaction.guild.channels.cache.get(channelId);
 
     if (action === "notify_member") {
-      // Defer primeiro para evitar timeout do Discord
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-
       const opener = await interaction.guild.members.fetch(openerId).catch(() => null);
       if (!opener) return interaction.editReply({ content: "❌ Não foi possível encontrar o membro." });
 
-      const dmContainer = new ContainerBuilder()
+      const dm = new ContainerBuilder()
         .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(BANNERS.ticket)))
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🔔 Notificação do Ticket`))
         .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-          `Olá, <@${openerId}>!\n\n` +
-          `A staff entrou em contato referente ao seu ticket.\n` +
-          `Por favor, acesse o canal do ticket para continuar o atendimento.`
+          `Olá, <@${openerId}>!\n\nA staff entrou em contato referente ao seu ticket.\nPor favor, acesse o canal para continuar o atendimento.`
         ))
         .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`));
 
-      const sent = await opener.send({ components: [dmContainer], flags: MessageFlags.IsComponentsV2 }).catch(() => null);
-      if (!sent) return interaction.editReply({ content: "❌ Não foi possível enviar DM para o membro (DMs fechadas)." });
-      return interaction.editReply({ content: "✅ Membro notificado na DM com sucesso!" });
+      const sent = await opener.send({ components: [dm], flags: MessageFlags.IsComponentsV2 }).catch(() => null);
+      return interaction.editReply({ content: sent ? "✅ Membro notificado!" : "❌ DMs fechadas." });
     }
 
     if (action === "add_member") {
@@ -513,29 +553,22 @@ async function handleInteraction(interaction) {
     }
   }
 
-  // ── Modal: Adicionar membro ──────────────────────────────────────────
   if (interaction.isModalSubmit() && interaction.customId.startsWith("modal_add_")) {
     const channelId = interaction.customId.replace("modal_add_", "");
     const memberId  = interaction.fields.getTextInputValue("member_id").trim();
     const ch        = interaction.guild.channels.cache.get(channelId);
     if (!ch) return interaction.reply({ content: "❌ Canal não encontrado.", flags: MessageFlags.Ephemeral });
+    if (!await interaction.guild.members.fetch(memberId).catch(() => null))
+      return interaction.reply({ content: "❌ Usuário não encontrado.", flags: MessageFlags.Ephemeral });
 
-    const target = await interaction.guild.members.fetch(memberId).catch(() => null);
-    if (!target) return interaction.reply({ content: "❌ Usuário não encontrado. Verifique o ID.", flags: MessageFlags.Ephemeral });
-
-    await ch.permissionOverwrites.edit(memberId, {
-      ViewChannel: true, SendMessages: true, ReadMessageHistory: true
-    }).catch(() => {});
-
-    const notice = new ContainerBuilder()
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        `### ➕ Membro Adicionado\n> <@${memberId}> foi adicionado ao ticket por <@${interaction.user.id}>.`
-      ));
-    await ch.send({ components: [notice], flags: MessageFlags.IsComponentsV2 });
-    return interaction.reply({ content: `✅ <@${memberId}> adicionado ao ticket!`, flags: MessageFlags.Ephemeral });
+    await ch.permissionOverwrites.edit(memberId, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true }).catch(() => {});
+    const n = new ContainerBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `### ➕ Membro Adicionado\n> <@${memberId}> foi adicionado por <@${interaction.user.id}>.`
+    ));
+    await ch.send({ components: [n], flags: MessageFlags.IsComponentsV2 });
+    return interaction.reply({ content: `✅ <@${memberId}> adicionado!`, flags: MessageFlags.Ephemeral });
   }
 
-  // ── Modal: Remover membro ────────────────────────────────────────────
   if (interaction.isModalSubmit() && interaction.customId.startsWith("modal_remove_")) {
     const channelId = interaction.customId.replace("modal_remove_", "");
     const memberId  = interaction.fields.getTextInputValue("member_id").trim();
@@ -543,120 +576,95 @@ async function handleInteraction(interaction) {
     if (!ch) return interaction.reply({ content: "❌ Canal não encontrado.", flags: MessageFlags.Ephemeral });
 
     await ch.permissionOverwrites.edit(memberId, { ViewChannel: false }).catch(() => {});
-
-    const notice = new ContainerBuilder()
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        `### ➖ Membro Removido\n> <@${memberId}> foi removido do ticket por <@${interaction.user.id}>.`
-      ));
-    await ch.send({ components: [notice], flags: MessageFlags.IsComponentsV2 });
-    return interaction.reply({ content: `✅ <@${memberId}> removido do ticket!`, flags: MessageFlags.Ephemeral });
+    const n = new ContainerBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `### ➖ Membro Removido\n> <@${memberId}> foi removido por <@${interaction.user.id}>.`
+    ));
+    await ch.send({ components: [n], flags: MessageFlags.IsComponentsV2 });
+    return interaction.reply({ content: `✅ <@${memberId}> removido!`, flags: MessageFlags.Ephemeral });
   }
 
-  // ── Ação do Painel Membro ────────────────────────────────────────────
+  // ── Member actions ────────────────────────────────────────────────────
   if (interaction.isStringSelectMenu() && interaction.customId.startsWith("member_action_")) {
-    const parts     = interaction.customId.split("_");
-    const channelId = parts[2];
-    const openerId  = parts[3];
-    const action    = interaction.values[0];
-    const ch        = interaction.guild.channels.cache.get(channelId);
+    const [,, channelId, openerId] = interaction.customId.split("_");
+    const action = interaction.values[0];
+    const ch = interaction.guild.channels.cache.get(channelId);
 
     if (action === "notify_staff") {
       if (!ch) return interaction.reply({ content: "❌ Canal não encontrado.", flags: MessageFlags.Ephemeral });
       const staffMentions = STAFF_ROLES.map(id => `<@&${id}>`).join(" ");
-
-      // 1. Mensagem separada só com o ping (sem flags IsComponentsV2) para o ping funcionar
       await ch.send({ content: staffMentions, allowedMentions: { parse: ["roles"] } });
-
-      // 2. Container visual separado
-      const notifyContainer = new ContainerBuilder()
-        .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-          `### 🔔 Staff Notificada\n> <@${openerId}> está aguardando atendimento!`
-        ));
-      await ch.send({ components: [notifyContainer], flags: MessageFlags.IsComponentsV2 });
-
-      return interaction.reply({ content: "✅ Staff notificada no canal!", flags: MessageFlags.Ephemeral });
+      const n = new ContainerBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(
+        `### 🔔 Staff Notificada\n> <@${openerId}> está aguardando atendimento!`
+      ));
+      await ch.send({ components: [n], flags: MessageFlags.IsComponentsV2 });
+      return interaction.reply({ content: "✅ Staff notificada!", flags: MessageFlags.Ephemeral });
     }
   }
 
-  // ── Fechar ticket ────────────────────────────────────────────────────
+  // ── Fechar ticket ─────────────────────────────────────────────────────
   if (interaction.isButton() && interaction.customId.startsWith("ticket_close_")) {
-    if (!isStaffMember(interaction.member))
+    if (!isStaff(interaction.member))
       return interaction.reply({ content: "❌ Apenas a staff pode fechar tickets.", flags: MessageFlags.Ephemeral });
 
-    const parts   = interaction.customId.split("_");
+    const parts    = interaction.customId.split("_");
     const openerId = parts[3] ?? null;
 
     claimedTickets.delete(interaction.channel.id);
+    await interaction.reply({ content: "🔒 Ticket será deletado em **5 segundos**.", flags: MessageFlags.Ephemeral });
 
-    await interaction.reply({ content: "🔒 Você fechou o ticket. O canal será deletado em **5 segundos**.", flags: MessageFlags.Ephemeral });
-
-    const closeContainer = new ContainerBuilder()
+    const closing = new ContainerBuilder()
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        `## 🔒 Ticket Sendo Fechado\n\n> Fechado por <@${interaction.user.id}>\n> Este canal será **deletado em 5 segundos.**`
+        `## 🔒 Ticket Sendo Fechado\n\n> Fechado por <@${interaction.user.id}>\n> Deletado em **5 segundos.**`
       ))
-      .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`));
-    await interaction.channel.send({ components: [closeContainer], flags: MessageFlags.IsComponentsV2 });
+    await interaction.channel.send({ components: [closing], flags: MessageFlags.IsComponentsV2 });
 
-    const closedChannel = interaction.channel;
-    const data          = ticketData.get(closedChannel.id);
-    const ticketName    = data?.ticketName ?? closedChannel.name;
-    const claimerId     = data?.claimerId  ?? null;
-    const logCh         = interaction.guild.channels.cache.get(LOG_CHANNEL_ID);
+    const ch         = interaction.channel;
+    const data       = ticketData.get(ch.id);
+    const ticketName = data?.ticketName ?? ch.name;
+    const claimerId  = data?.claimerId  ?? null;
+    const alreadySent = data?.ratedSent ?? false;
+    const dateStr    = getBRT();
 
-    // ─ Transcript ─
-    let transcriptText = `📄 TRANSCRIPT DO TICKET: ${closedChannel.name}\nFechado por: ${interaction.user.tag}\n\n`;
+    // Transcript
+    let txt = `📄 TRANSCRIPT: ${ch.name}\nFechado por: ${interaction.user.tag}\n\n`;
     try {
-      const messages  = await closedChannel.messages.fetch({ limit: 100 });
-      const msgsArray = Array.from(messages.values()).reverse();
-      msgsArray.forEach(m => {
-        const time    = m.createdAt.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
-        const author  = m.author ? m.author.tag : "Desconhecido";
-        const content = m.content || "[Mensagem sem texto, mídia ou embed]";
-        transcriptText += `[${time}] ${author}: ${content}\n`;
+      const msgs = await ch.messages.fetch({ limit: 100 });
+      Array.from(msgs.values()).reverse().forEach(m => {
+        const time = m.createdAt.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
+        txt += `[${time}] ${m.author?.tag ?? "?"}: ${m.content || "[sem texto]"}\n`;
       });
-    } catch (err) {
-      console.error("Erro ao gerar transcript:", err);
-      transcriptText += "\n⚠️ Erro ao carregar o histórico completo.";
-    }
-    const transcriptAttachment = new AttachmentBuilder(Buffer.from(transcriptText, "utf-8"), { name: `transcript-${closedChannel.name}.txt` });
+    } catch { txt += "\n⚠️ Erro ao carregar histórico."; }
+    const file = new AttachmentBuilder(Buffer.from(txt, "utf-8"), { name: `transcript-${ch.name}.txt` });
 
-    const now     = new Date();
-    const dateStr = now.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    interaction.guild.channels.cache.get(LOG_CHANNEL_ID)?.send({
+      embeds: [new EmbedBuilder()
+        .setTitle("🔒 Ticket Fechado")
+        .addFields(
+          { name: "Canal",      value: ch.name,                                          inline: true },
+          { name: "Fechado por",value: `<@${interaction.user.id}>`,                      inline: true },
+          { name: "Criado por", value: openerId ? `<@${openerId}>` : "Desconhecido",     inline: true },
+          { name: "Data",       value: dateStr,                                           inline: true },
+        )
+        .setColor(0xED4245).setFooter({ text: "PAFO — Ticket System", iconURL: SERVER_ICON }).setTimestamp()
+      ],
+      files: [file]
+    });
 
-    if (logCh) {
-      await logCh.send({
-        embeds: [new EmbedBuilder()
-          .setTitle("🔒 Ticket Fechado")
-          .addFields(
-            { name: "Canal",      value: closedChannel.name,                           inline: true },
-            { name: "Fechado por",value: `<@${interaction.user.id}>`,                  inline: true },
-            { name: "Criado por", value: openerId ? `<@${openerId}>` : "Desconhecido", inline: true },
-            { name: "Data",       value: dateStr,                                       inline: true },
-          )
-          .setColor(0xED4245).setFooter({ text: "PAFO — Ticket System", iconURL: SERVER_ICON }).setTimestamp()
-        ],
-        files: [transcriptAttachment]
-      });
-    }
-
-    // ─ DM de avaliação para quem abriu o ticket ─
-    if (openerId) {
+    // DM de avaliação — apenas 1 vez por ticket
+    if (openerId && !alreadySent) {
+      if (data) data.ratedSent = true;
       const opener = await interaction.guild.members.fetch(openerId).catch(() => null);
       if (opener) {
-        const dmContainer = new ContainerBuilder()
+        const dmC = new ContainerBuilder()
           .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(BANNERS.ticket)))
           .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🔒 Seu Ticket Foi Encerrado`))
           .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
           .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-            `**Ticket:** \`${ticketName}\`\n` +
-            `**Fechado por:** <@${interaction.user.id}>\n` +
-            `**Data:** ${dateStr}`
+            `**Ticket:** \`${ticketName}\`\n**Fechado por:** <@${interaction.user.id}>\n**Data:** ${dateStr}`
           ))
           .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
-          .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-            `⭐ **Como foi o nosso atendimento?**\nAvalie clicando em uma das opções abaixo:`
-          ))
+          .addTextDisplayComponents(new TextDisplayBuilder().setContent(`⭐ **Como foi o nosso atendimento?**\nAvalie clicando em uma das opções abaixo:`))
           .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
           .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`))
           .addActionRowComponents(new ActionRowBuilder().addComponents(
@@ -666,211 +674,157 @@ async function handleInteraction(interaction) {
             new ButtonBuilder().setCustomId(`rate_${ticketName}_${openerId}_${claimerId ?? interaction.user.id}_4`).setLabel("⭐ 4").setStyle(ButtonStyle.Success),
             new ButtonBuilder().setCustomId(`rate_${ticketName}_${openerId}_${claimerId ?? interaction.user.id}_5`).setLabel("⭐ 5").setStyle(ButtonStyle.Success)
           ));
-
-        await opener.send({ components: [dmContainer], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+        await opener.send({ components: [dmC], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
       }
     }
 
-    ticketData.delete(closedChannel.id);
-    setTimeout(() => { closedChannel.delete().catch(() => {}); }, 5000);
+    ticketData.delete(ch.id);
+    setTimeout(() => ch.delete().catch(() => {}), 5000);
     return;
   }
 
-  // ── Reivindicar ticket ───────────────────────────────────────────────
+  // ── Reivindicar ticket ────────────────────────────────────────────────
   if (interaction.isButton() && interaction.customId.startsWith("ticket_claim_")) {
-    if (!isStaffMember(interaction.member))
+    if (!isStaff(interaction.member))
       return interaction.reply({ content: "❌ Apenas a staff pode reivindicar tickets.", flags: MessageFlags.Ephemeral });
 
     const ch = interaction.channel;
     if (claimedTickets.has(ch.id))
-      return interaction.reply({ content: "❌ Este ticket já foi reivindicado por outro membro da staff.", flags: MessageFlags.Ephemeral });
-
+      return interaction.reply({ content: "❌ Este ticket já foi reivindicado.", flags: MessageFlags.Ephemeral });
     claimedTickets.add(ch.id);
+
     await interaction.reply({ content: "✅ Você reivindicou este ticket!", flags: MessageFlags.Ephemeral });
 
-    const parts     = interaction.customId.split("_");
-    const channelId = parts[2] ?? null;
-    const openerId  = parts[3] ?? null;
-
-    // Atualiza claimerId na memória
-    if (ticketData.has(ch.id)) {
-      ticketData.get(ch.id).claimerId = interaction.user.id;
-    }
+    const [,, channelId, openerId] = interaction.customId.split("_");
+    if (ticketData.has(ch.id)) ticketData.get(ch.id).claimerId = interaction.user.id;
 
     await Promise.all([
-      ...STAFF_ROLES.map(roleId => ch.permissionOverwrites.edit(roleId, { ViewChannel: false }).catch(() => {})),
+      ...STAFF_ROLES.map(rId => ch.permissionOverwrites.edit(rId, { ViewChannel: false }).catch(() => {})),
       ch.permissionOverwrites.edit(interaction.user.id, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true }).catch(() => {}),
-      openerId ? ch.permissionOverwrites.edit(openerId, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true }).catch(() => {}) : Promise.resolve(),
+      openerId ? ch.permissionOverwrites.edit(openerId, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true }).catch(() => {}) : null,
     ]);
 
-    // Reconstrói container com banner preservado
     const data      = ticketData.get(ch.id);
     const ticketInfo = data
       ? `**Nome do Ticket:** \`${data.ticketName}\`\n**Criado Por:** <@${data.openerId}>\n**Opened Date:** ${data.dateStr}\n**Ticket Type:** ${data.label}`
       : `**Criado Por:** <@${openerId}>`;
 
-    const btnFechar = new ButtonBuilder()
-      .setCustomId(`ticket_close_${ch.id}_${openerId}`)
-      .setLabel("Fechar Ticket").setStyle(ButtonStyle.Danger).setEmoji("🔒");
-
-    const btnReivindicado = new ButtonBuilder()
-      .setCustomId(`claimed_by_${interaction.user.id}`)
-      .setLabel(`Atendido por ${interaction.user.displayName}`)
-      .setStyle(ButtonStyle.Secondary).setEmoji("👤").setDisabled(true);
-
-    const updatedContainer = new ContainerBuilder()
+    const updated = new ContainerBuilder()
       .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(BANNERS.ticket)))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🎫 Ticket Aberto`))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(ticketInfo))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`))
-      .addActionRowComponents(new ActionRowBuilder().addComponents(btnFechar, btnReivindicado))
       .addActionRowComponents(new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`panel_staff_${ch.id}_${openerId}`).setLabel("Painel Staff").setStyle(ButtonStyle.Secondary).setEmoji({ id: "1436350133884293221", name: "icon_suplente_mod_1" }),
+        new ButtonBuilder().setCustomId(`ticket_close_${ch.id}_${openerId}`).setLabel("Fechar Ticket").setStyle(ButtonStyle.Danger).setEmoji("🔒"),
+        new ButtonBuilder().setCustomId(`claimed_by_${interaction.user.id}`).setLabel(`Atendido por ${interaction.user.displayName}`).setStyle(ButtonStyle.Secondary).setEmoji("👤").setDisabled(true)
+      ))
+      .addActionRowComponents(new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`panel_staff_${ch.id}_${openerId}`).setLabel("Painel Staff").setStyle(ButtonStyle.Secondary).setEmoji({ id:"1436350133884293221", name:"icon_suplente_mod_1" }),
         new ButtonBuilder().setCustomId(`panel_member_${ch.id}_${openerId}`).setLabel("Painel Membro").setStyle(ButtonStyle.Secondary).setEmoji("👤")
       ));
 
-    await interaction.message.edit({ components: [updatedContainer], flags: MessageFlags.IsComponentsV2 }).catch(e => console.error("Erro ao editar:", e));
+    await interaction.message.edit({ components: [updated], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
 
-    const claimNotice = new ContainerBuilder()
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        `### 🤝 Atendimento Iniciado\n> O staff <@${interaction.user.id}> agora é o responsável por este ticket.`
-      ));
-    await ch.send({ components: [claimNotice], flags: MessageFlags.IsComponentsV2 });
+    const notice = new ContainerBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `### 🤝 Atendimento Iniciado\n> <@${interaction.user.id}> é o responsável por este ticket.`
+    ));
+    await ch.send({ components: [notice], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
-  // ── Free Agent: helper — lê campos do container da mensagem ─────────
-  async function parseFaMessage(channelId, msgId) {
+  // ── Free Agent helper ─────────────────────────────────────────────────
+  async function parseFa(channelId, msgId) {
     try {
       const ch  = await client.channels.fetch(channelId).catch(() => null);
-      if (!ch) return null;
-      const msg = await ch.messages.fetch(msgId).catch(() => null);
+      const msg = ch ? await ch.messages.fetch(msgId).catch(() => null) : null;
       if (!msg) return null;
-      // Extrai texto dos TextDisplay components do container
       const texts = [];
       for (const comp of msg.components) {
-        if (comp.type === 17) { // Container
-          for (const child of comp.components) {
-            if (child.type === 10) texts.push(child.content ?? ""); // TextDisplay
-          }
-        }
+        if (comp.type === 17) for (const child of comp.components) if (child.type === 10) texts.push(child.content ?? "");
       }
-      // Campos estão nas posições: 1=jogador,2=exp,3=hab,4=pos,5=disp,6=obs
-      const extract = (txt) => txt.includes("→") ? txt.split("→").slice(1).join("→").trim() : txt;
+      const ex = (t) => t.includes("→") ? t.split("→").slice(1).join("→").trim() : t;
       return {
-        userId:       texts[1] ? texts[1].replace(/[^0-9]/g, "").slice(0,20) : null,
-        experiencias: texts[2] ? extract(texts[2]) : "—",
-        habilidades:  texts[3] ? extract(texts[3]) : "—",
-        posicao:      texts[4] ? extract(texts[4]) : "—",
-        dispositivo:  texts[5] ? extract(texts[5]) : "—",
-        observacoes:  texts[6] ? extract(texts[6]) : "—",
+        userId: texts[1]?.replace(/[^0-9]/g,"").slice(0,20) ?? null,
+        experiencias: texts[2] ? ex(texts[2]) : "—",
+        habilidades:  texts[3] ? ex(texts[3]) : "—",
+        posicao:      texts[4] ? ex(texts[4]) : "—",
+        dispositivo:  texts[5] ? ex(texts[5]) : "—",
+        observacoes:  texts[6] ? ex(texts[6]) : "—",
       };
     } catch { return null; }
   }
 
-  // ── Free Agent: Contratar ─────────────────────────────────────────────
+  // ── FA Contratar ──────────────────────────────────────────────────────
   if (interaction.isButton() && interaction.customId.startsWith("fac_")) {
-    const parts   = interaction.customId.split("_");
-    const userId  = parts[1];
-    const msgId   = parts[2];
-
+    const [, userId, msgId] = interaction.customId.split("_");
     if (interaction.user.id === userId)
       return interaction.reply({ content: "❌ Você não pode se contratar.", flags: MessageFlags.Ephemeral });
 
-    const targetMember = await interaction.guild.members.fetch(userId).catch(() => null);
-    if (!targetMember) return interaction.reply({ content: "❌ Jogador não encontrado no servidor.", flags: MessageFlags.Ephemeral });
+    const target = await interaction.guild.members.fetch(userId).catch(() => null);
+    if (!target) return interaction.reply({ content: "❌ Jogador não encontrado.", flags: MessageFlags.Ephemeral });
 
-    const dmC = new ContainerBuilder()
+    const dm = new ContainerBuilder()
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🤝 Proposta de Contratação`))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        `Olá, <@${userId}>! 👋
-
-` +
-        `<@${interaction.user.id}> viu seu anúncio de **Free Agent** e está interessado em você!
-
-` +
-        `📩 **Entre em contato:** <@${interaction.user.id}>
-` +
-        `🏷️ **Tag:** ${interaction.user.tag}`
+        `Olá, <@${userId}>! 👋\n\n<@${interaction.user.id}> está interessado em você!\n\n📩 **Entre em contato:** <@${interaction.user.id}>\n🏷️ **Tag:** ${interaction.user.tag}`
       ))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Free Agent`));
 
-    const sent = await targetMember.send({ components: [dmC], flags: MessageFlags.IsComponentsV2 }).catch(() => null);
-    if (!sent) return interaction.reply({ content: "❌ Não foi possível enviar DM (DMs fechadas).", flags: MessageFlags.Ephemeral });
+    const sent = await target.send({ components: [dm], flags: MessageFlags.IsComponentsV2 }).catch(() => null);
+    if (!sent) return interaction.reply({ content: "❌ DMs fechadas.", flags: MessageFlags.Ephemeral });
 
-    const confirmC = new ContainerBuilder()
+    const confirm = new ContainerBuilder()
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## ✅ Proposta Enviada!`))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        `Sua proposta foi enviada para <@${userId}>!
-Aguarde o contato dele no privado. 🎮`
-      ))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`Sua proposta foi enviada para <@${userId}>! 🎮`))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Free Agent`));
-
-    return interaction.reply({ components: [confirmC], flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 });
+    return interaction.reply({ components: [confirm], flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 });
   }
 
-  // ── Free Agent: Saber Mais ────────────────────────────────────────────
+  // ── FA Saber Mais ─────────────────────────────────────────────────────
   if (interaction.isButton() && interaction.customId.startsWith("fas_")) {
-    const parts  = interaction.customId.split("_");
-    const userId = parts[1];
-    const msgId  = parts[2];
+    const [, userId, msgId] = interaction.customId.split("_");
+    const fa = await parseFa(interaction.channel.id, msgId);
 
-    const fa = await parseFaMessage(interaction.channel.id, msgId);
-
-    const profileC = new ContainerBuilder()
+    const profile = new ContainerBuilder()
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 📋 Perfil Completo`))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`🧑 ***JOGADOR***
-→ <@${userId}>`))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`🧑 ***JOGADOR***\n→ <@${userId}>`))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`⭐ ***EXPERIÊNCIAS***
-→ ${fa?.experiencias ?? "—"}`))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`⭐ ***EXPERIÊNCIAS***\n→ ${fa?.experiencias ?? "—"}`))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`⚡ ***HABILIDADES***
-→ ${fa?.habilidades ?? "—"}`))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`⚡ ***HABILIDADES***\n→ ${fa?.habilidades ?? "—"}`))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`🎯 ***POSIÇÃO***
-→ ${fa?.posicao ?? "—"}`))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`🎯 ***POSIÇÃO***\n→ ${fa?.posicao ?? "—"}`))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`📱 ***DISPOSITIVO***
-→ ${fa?.dispositivo ?? "—"}`))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`📱 ***DISPOSITIVO***\n→ ${fa?.dispositivo ?? "—"}`))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`📝 ***OBSERVAÇÕES***
-→ ${fa?.observacoes ?? "—"}`))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`📝 ***OBSERVAÇÕES***\n→ ${fa?.observacoes ?? "—"}`))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        `> 💬 Para contratar, clique em **Contratar** no anúncio ou envie uma DM para <@${userId}>.`
-      ))
-      .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`> 💬 Para contratar, clique em **Contratar** no anúncio ou envie DM para <@${userId}>.`))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Free Agent`));
-
-    return interaction.reply({ components: [profileC], flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 });
+    return interaction.reply({ components: [profile], flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 });
   }
 
-  // ── Avaliação (DM) ───────────────────────────────────────────────────
+  // ── Avaliação (DM) ────────────────────────────────────────────────────
   if (interaction.isButton() && interaction.customId.startsWith("rate_")) {
-    // rate_<ticketName>_<openerId>_<claimerId>_<nota>
     const parts      = interaction.customId.split("_");
     const nota       = parseInt(parts[parts.length - 1]);
     const claimerId  = parts[parts.length - 2];
     const openerId   = parts[parts.length - 3];
     const ticketName = parts.slice(1, parts.length - 3).join("_");
 
-    // Defer imediatamente para evitar timeout (operação assíncrona longa)
     await interaction.deferUpdate();
 
     const stars   = "⭐".repeat(nota);
-    const now     = new Date();
-    const dateStr = now.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    const dateStr = getBRT();
 
-    // Edita a DM para mostrar que já avaliou
-    const confirmedDm = new ContainerBuilder()
+    const confirmed = new ContainerBuilder()
       .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(BANNERS.ticket)))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## ✅ Avaliação Enviada!`))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
@@ -879,39 +833,29 @@ Aguarde o contato dele no privado. 🎮`
       ))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`));
+    await interaction.message.edit({ components: [confirmed], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
 
-    await interaction.message.edit({ components: [confirmedDm], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
-
-    // Busca a guild pelo ID fixo (a interação vem de DM, não tem interaction.guild)
-    const GUILD_ID = "1449061779060687063";
-    const guild    = await client.guilds.fetch(GUILD_ID).catch(() => null);
-    if (!guild) { console.error("Guild não encontrada para enviar avaliação."); return; }
-
-    const reviewCh = await guild.channels.fetch(REVIEW_CHANNEL_ID).catch(() => null);
-    if (reviewCh) {
-      const reviewContainer = new ContainerBuilder()
+    const guild   = await client.guilds.fetch(GUILD_ID).catch(() => null);
+    const revCh   = guild ? await guild.channels.fetch(REVIEW_CHANNEL_ID).catch(() => null) : null;
+    if (revCh) {
+      const rev = new ContainerBuilder()
         .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(BANNERS.ticket)))
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## ⭐ Nova Avaliação de Atendimento`))
         .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-          `**Ticket:** \`${ticketName}\`\n` +
-          `**Membro:** <@${openerId}>\n` +
-          `**Nota:** ${stars} **(${nota}/5)**\n` +
-          `**Staff Responsável:** <@${claimerId}>\n` +
-          `**Data:** ${dateStr}`
+          `**Ticket:** \`${ticketName}\`\n**Membro:** <@${openerId}>\n**Nota:** ${stars} **(${nota}/5)**\n**Staff:** <@${claimerId}>\n**Data:** ${dateStr}`
         ))
         .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`));
-
-      await reviewCh.send({ components: [reviewContainer], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
-    } else {
-      console.error(`Canal de avaliações ${REVIEW_CHANNEL_ID} não encontrado.`);
+      await revCh.send({ components: [rev], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
     }
     return;
   }
 }
 
-// ─── Funções de comando ───────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════
+//  Funções de comando
+// ══════════════════════════════════════════════════════════════════════
 
 async function sendWelcome(channel, member) {
   const icon = member.guild.iconURL({ size: 1024 }) ?? SERVER_ICON;
@@ -921,10 +865,10 @@ async function sendWelcome(channel, member) {
     .setThumbnail(icon)
     .setDescription(
       `Bem-vindo(a), <@${member.id}>! Ficamos felizes por você ter se juntado à 🌌 PAFO.\n\n` +
-      `Por favor, certifique-se de ler as regras em:\nhttps://discord.com/channels/1449061779060687063/1449067621411459183\n\n` +
-      `↳ Você pode obter ajuda com nosso suporte no canal\nhttps://discord.com/channels/1449061779060687063/1449068500567068804\n\n` +
-      `↳ Você pode encontrar mais informações em\nhttps://discord.com/channels/1449061779060687063/1454098611754373296\n\n` +
-      `↳ ⚠️ Certifique-se de verificar sua conta em\nhttps://discord.com/channels/1449061779060687063/1464627654744477819`
+      `📜 Leia as regras: https://discord.com/channels/1449061779060687063/1449067621411459183\n\n` +
+      `🎫 Suporte: https://discord.com/channels/1449061779060687063/1449068500567068804\n\n` +
+      `📢 Informações: https://discord.com/channels/1449061779060687063/1454098611754373296\n\n` +
+      `✅ Verifique sua conta: https://discord.com/channels/1449061779060687063/1464627654744477819`
     )
     .setImage(BANNERS.welcome).setColor(0x1B2A4A).setFooter({ text: "© 2026 PAFO", iconURL: icon }).setTimestamp()
   ]}).catch(console.error);
@@ -934,21 +878,21 @@ async function cmdVerify(channel) {
   const c = new ContainerBuilder()
     .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(BANNERS.verify)))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `## 🔐 Verificação Necessária para Acessar a PAFO\n\nPara acessar o servidor, você deve concluir a verificação para confirmar que **é humano** e que **não está usando contas alternativas *(alts)* ou VPN.**`
+      `## 🔐 Verificação Necessária para Acessar a PAFO\n\nPara acessar o servidor, confirme que **é humano** e **não usa contas alternativas ou VPN.**`
     ))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `### 📋 Antes de Verificar\n> • Leia as **regras** do servidor\n> • Entenda que os cargos na PAFO dependem de **atividade**, **habilidade** e **contribuição**`
+      `### 📋 Antes de Verificar\n> • Leia as **regras** do servidor\n> • Os cargos dependem de **atividade**, **habilidade** e **contribuição**`
     ))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `### 🚫 Regras de Verificação\n> • Proibido usar __contas alternativas__\n> • Não usar __VPN__\n> • Golpes ou exploração = **banimento imediato**\n> • Respeite todos os membros`
+      `### 🚫 Regras de Verificação\n> • Proibido __contas alternativas__\n> • Não usar __VPN__\n> • Golpes = **banimento imediato**\n> • Respeite todos os membros`
     ))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# Ao realizar a verificação, você aceita todas as __Políticas da PAFO__.`))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# Ao verificar, você aceita todas as __Políticas da PAFO__.`))
     .addActionRowComponents(new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId("verify_button").setLabel("Verificar").setStyle(ButtonStyle.Success).setEmoji({ id: "1396655318662119535", name: "verify", animated: true }),
-      new ButtonBuilder().setCustomId("why_verify").setLabel("Porque?").setStyle(ButtonStyle.Secondary).setEmoji({ id: "1468006456489148580", name: "question", animated: true })
+      new ButtonBuilder().setCustomId("verify_button").setLabel("Verificar").setStyle(ButtonStyle.Success).setEmoji({ id:"1396655318662119535", name:"verify", animated:true }),
+      new ButtonBuilder().setCustomId("why_verify").setLabel("Porque?").setStyle(ButtonStyle.Secondary).setEmoji({ id:"1468006456489148580", name:"question", animated:true })
     ));
   await channel.send({ components: [c], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
 }
@@ -959,8 +903,8 @@ async function cmdRules(channel) {
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
       `1. Seja respeitoso — proibido \`assédio\`, \`bullying\`, \`toxicidade\` ou \`drama\`\n` +
       `2. Proibido \`discurso de ódio\`, \`racismo\`, \`insultos\`, \`homofobia\` ou \`transfobia\`\n` +
-      `3. Proibido conteúdo \`NSFW\` — \`imagens/vídeos NSFW = banimento imediato\`\n` +
-      `4. Proibido \`ameaças\`, \`doxxing\`, \`falar em raid\` ou incentivar \`automutilação\`\n` +
+      `3. Proibido conteúdo \`NSFW\` — \`banimento imediato\`\n` +
+      `4. Proibido \`ameaças\`, \`doxxing\`, \`raid\` ou incentivar \`automutilação\`\n` +
       `5. Proibido \`spam\`, \`flood\` ou \`abuso de menções\`\n` +
       `6. Mantenha-se \`no assunto\` do canal\n` +
       `7. Proibido \`se passar por outra pessoa\`\n` +
@@ -972,14 +916,14 @@ async function cmdRules(channel) {
       `13. Proibido \`desinformação\` ou enganar membros\n` +
       `14. Proibido \`burlar o AutoMod\` com símbolos ou grafias alternativas\n` +
       `15. Evite mencionar outros \`servidores\`\n` +
-      `16. Proibido \`spam no VC\`, barulho excessivo ou comportamento disruptivo\n` +
+      `16. Proibido \`spam no VC\` ou comportamento disruptivo\n` +
       `17. Decisões da staff são \`finais\`\n` +
       `18. Proibido \`denúncias falsas\`, tickets de troll ou aplicações falsas`
     ))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Large).setDivider(true))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# © 2026 PAFO — Ao entrar no servidor você concorda com todas as regras acima.`))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# © 2026 PAFO — Ao entrar você concorda com todas as regras acima.`))
     .addActionRowComponents(new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setURL("https://discord.com/guidelines").setLabel("Discord TOS/Diretrizes").setStyle(ButtonStyle.Link).setEmoji({ id: "1445106637202395396", name: "Discord_Emoji" })
+      new ButtonBuilder().setURL("https://discord.com/guidelines").setLabel("Discord TOS/Diretrizes").setStyle(ButtonStyle.Link).setEmoji({ id:"1445106637202395396", name:"Discord_Emoji" })
     ));
   await channel.send({ components: [c], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
 }
@@ -995,7 +939,7 @@ async function cmdBooster(channel) {
     ))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `**⚠️ Avisos:**\n> • Válido enquanto o boost estiver __ativo__\n> • Os benefícios podem mudar conforme o servidor evolui\n> • Abra um ticket para resgatar seus benefícios`
+      `**⚠️ Avisos:**\n> • Válido enquanto o boost estiver __ativo__\n> • Benefícios podem mudar conforme o servidor evolui\n> • Abra um ticket para resgatar`
     ))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Server Booster`))
@@ -1008,7 +952,7 @@ async function cmdBooster(channel) {
 async function cmdInfo(channel) {
   const c = new ContainerBuilder()
     .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(BANNERS.info)))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🏅 CARGOS DO SERVIDOR — FUNÇÃO & COMO OBTER`))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🏅 CARGOS DO SERVIDOR`))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
       `🔴 **Owner** — Dono do servidor\n🟠 **Co-Owner** — Co-dono do servidor\n🟡 **Gerente** — Gerencia o servidor\n` +
       `🟢 **Staff** — Modera o servidor\n🔵 **Olheiro** — Pode divulgar peneiras\n🟣 **Scrim Hoster** — Pode hospedar scrims\n⚪ **Verificado** — Membro verificado`
@@ -1016,16 +960,15 @@ async function cmdInfo(channel) {
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Large).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 📌 CANAIS IMPORTANTES`))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `📜 **Regras** — <#1449067621411459183>\n✅ **Verificação** — <#1464627654744477819>\n📢 **Anúncios** — <#1454098611754373296>\n🎫 **Suporte/Ticket** — <#1449068500567068804>\n🎁 **Sorteios** — <#1449115997804957806>`
+      `📜 **Regras** — <#1449067621411459183>\n✅ **Verificação** — <#1464627654744477819>\n📢 **Anúncios** — <#1454098611754373296>\n🎫 **Ticket** — <#1449068500567068804>\n🎁 **Sorteios** — <#1449115997804957806>`
     ))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Large).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## ⚠️ O QUE GERA ADVERTÊNCIA`))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `> • \`Linguagem inadequada\`\n> • \`Spam ou flood\`\n> • \`Links não autorizados\`\n> • \`Conteúdo off-topic\`\n> • \`Desobedecer staff\`\n> • \`Qualquer violação das regras\``
+      `> • \`Linguagem inadequada\`\n> • \`Spam ou flood\`\n> • \`Links não autorizados\`\n> • \`Conteúdo off-topic\`\n> • \`Desobedecer staff\``
     ))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Large).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`🔗 **Servidor de Appeal:** https://discord.gg/8eAK5xVHPY`))
-    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# © 2026 PAFO`))
     .addActionRowComponents(new ActionRowBuilder().addComponents(
       new ButtonBuilder().setURL("https://discord.com/channels/1449061779060687063/1449068500567068804").setLabel("Abrir Ticket").setStyle(ButtonStyle.Link).setEmoji("🎫")
@@ -1037,27 +980,26 @@ async function cmdLoja(channel) {
   const c = new ContainerBuilder()
     .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(BANNERS.loja)))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `## <:PAFO:1455732882235719862> TABELA DE PREÇOS — CARGOS\n### <a:arrow_arrow:1455734922823209043> FUNÇÃO & VALORES`
+      `## <:PAFO:1455732882235719862> TABELA DE PREÇOS — CARGOS`
     ))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `🔍 <@&1449070067131224268> — **Olheiro**\n> • **Valor:** 150 Robux / Brainrots\n> • **Função:** Realizar peneiras e observar jogadores\n> • ⚠️ Obrigatório para fazer peneiras`
+      `🔍 <@&1449070067131224268> — **Olheiro** — **150 Robux**\n> Realize peneiras e observe jogadores`
     ))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `⚔️ <@&1449070133040517262> — **Scrim Hoster**\n> • **Valor:** 300 Robux / Brainrots\n> • **Função:** Organizar e hostear scrims oficiais`
+      `⚔️ <@&1449070133040517262> — **Scrim Hoster** — **300 Robux**\n> Organize e hostear scrims oficiais`
     ))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `📸 <@&1450118477179260948> — **Pic Perm**\n> • **Valor:** 60 Robux / Brainrots\n> • **Função:** Permissão para enviar imagens onde não é permitido`
+      `📸 <@&1450118477179260948> — **Pic Perm** — **60 Robux**\n> Permissão para enviar imagens onde não é permitido`
     ))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `🛠️ **Canal Personalizado**\n> • **Valor:** 200 Robux / Brainrots\n> • **Função:** Criação de canais personalizados da PAFO`
+      `🛠️ **Canal Personalizado** — **200 Robux**\n> Criação de canal personalizado da PAFO`
     ))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Large).setDivider(true))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### 🚫 NÃO VENDEMOS CARGO DE ADM\nPara adquirir qualquer cargo, abra um ticket:`))
-    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### 🚫 NÃO VENDEMOS CARGO DE ADM`))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# © 2026 PAFO`))
     .addActionRowComponents(new ActionRowBuilder().addComponents(
       new ButtonBuilder().setURL("https://discord.com/channels/1449061779060687063/1449068500567068804").setLabel("Abrir Ticket").setStyle(ButtonStyle.Link).setEmoji("📩")
@@ -1080,15 +1022,12 @@ async function cmdTicket(channel) {
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🎫 Help & Support`))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `Nossa equipe estará sempre disponível para ajudar você no que precisar.\nAbra um ticket de acordo com o assunto desejado:\n\n` +
-      `❓ **Dúvidas** — Perguntas gerais sobre a liga ou o servidor\n🤝 **Parcerias** — Propostas de parceria e divulgações\n` +
-      `🛒 **Compras** — Comprar cargo por exemplo: olheiro\n🚨 **Denúncias** — Denunciar algum usuário do servidor\n📌 **Outros** — Outros assuntos`
+      `Nossa equipe estará sempre disponível para ajudar!\n\n` +
+      `❓ **Dúvidas** — Perguntas gerais\n🤝 **Parcerias** — Propostas e divulgações\n` +
+      `🛒 **Compras** — Comprar cargos\n🚨 **Denúncias** — Denunciar usuários\n📌 **Outros** — Outros assuntos`
     ))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `> ⏳ Pedimos __paciência__ enquanto nossa staff analisa seu ticket.\n> Atenderemos o __mais rápido__ possível.`
-    ))
-    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`> ⏳ Pedimos __paciência__ enquanto nossa staff analisa seu ticket.`))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`))
     .addActionRowComponents(new ActionRowBuilder().addComponents(select));
   await channel.send({ components: [c], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
@@ -1098,7 +1037,7 @@ async function cmdFriendlys(channel) {
   const c = new ContainerBuilder()
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
       `## 📋 REGRAS OFICIAIS — PAFO FRIENDLYS\n\n` +
-      `Qualquer ato de **racismo**, **gordofobia**, **xenofobia** ou **discriminação** seja em servidor, privado ou qualquer outro meio:\n\n` +
+      `Qualquer ato de **racismo**, **gordofobia**, **xenofobia** ou **discriminação** em qualquer meio:\n\n` +
       `> Resultado: **Mute + Advertência**\n\n` +
       `⚠️ Caso ocorra **DURANTE** um amistoso:\n` +
       `> Resultado: **BANIMENTO**\n\n` +
@@ -1113,15 +1052,210 @@ async function cmdFriendlys(channel) {
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Large).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
       `## ⚠️ OBSERVAÇÕES IMPORTANTES\n\n` +
-      `> • Racismo, gordofobia, xenofobia e qualquer forma de preconceito se enquadram na mesma punição *(Mute + Adv)*\n` +
-      `> • As regras são válidas **dentro e fora** do servidor`
+      `> • Racismo, gordofobia, xenofobia e preconceito = Mute + Adv\n` +
+      `> • As regras são válidas **dentro e fora** do servidor\n` +
+      `> • Se o servidor tiver **-13 membros**, avise antes da peneira\n` +
+      `> • Proibido dar **kick all** sem motivo justificado\n` +
+      `> • Respeite os **Friendly Rules** em todos os momentos`
     ))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Large).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `**Mais informações:**\n<#1454098611754373296>\n<#1449068500567068804>`
+      `**Mais informações:**\n<#1454098611754373296> | <#1449068500567068804>`
+    ))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# © 2026 PAFO — Friendlys Rules`));
+  await channel.send({ components: [c], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
+}
+
+// ─── NOVO: !olheiro-rules ─────────────────────────────────────────────
+async function cmdOlheiroRules(channel) {
+  const c = new ContainerBuilder()
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🔍 REGRAS PARA OLHEIROS — PAFO`))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `**📋 Regras de Conduta:**\n` +
+      `> • Enviar o link do servidor privado **no máximo 2 vezes**\n` +
+      `> • **Proibido** enviar link de times\n` +
+      `> • Respeite os jogadores durante a peneira\n` +
+      `> • Mantenha clareza na divulgação`
+    ))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `**📝 Modelo de mensagem para peneiras:**\n\n` +
+      "```\n" +
+      "# PENEIRA NOBRE!\n" +
+      "**O real nobres está atrás de novas lendas!**\n\n" +
+      "# regras\n" +
+      "**- não hoggar\n" +
+      "- não fazer Ts\n" +
+      "- skille se puder\n" +
+      "- tocar independente de tudo\n" +
+      "- não passar fome**\n\n" +
+      "Link: https://www.roblox.com/share?code=SEU_CODIGO&type=Server\n" +
+      "||@here||\n" +
+      "```"
+    ))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `**🛒 Como obter o cargo de Olheiro?**\n` +
+      `> Veja a loja em <#${LOJA_CHANNEL_ID}> e compre por **150 Robux**.\n` +
+      `> Depois abra um ticket para liberar o acesso.`
+    ))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`⚠️ **Descumprir as regras resulta em remoção do cargo sem reembolso.**`))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# © 2026 PAFO — Olheiro Rules`))
+    .addActionRowComponents(new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setURL("https://discord.com/channels/1449061779060687063/1449068500567068804").setLabel("Abrir Ticket").setStyle(ButtonStyle.Link).setEmoji("🎫"),
+      new ButtonBuilder().setURL(`https://discord.com/channels/${GUILD_ID}/${LOJA_CHANNEL_ID}`).setLabel("Ver Loja").setStyle(ButtonStyle.Link).setEmoji("🛒")
+    ));
+  await channel.send({ components: [c], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
+}
+
+// ─── NOVO: !scrimhoster-rules ─────────────────────────────────────────
+async function cmdScrimHosterRules(channel) {
+  const c = new ContainerBuilder()
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## ⚔️ REGRAS PARA SCRIM HOSTERS — PAFO`))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `**📋 Regras de Conduta:**\n` +
+      `> • Enviar o link do servidor privado **no máximo 2 vezes**\n` +
+      `> • **Proibido** enviar link de times\n` +
+      `> • Informe estádio, modo de jogo e juiz no anúncio\n` +
+      `> • Respeite os Friendly Rules durante as scrims`
+    ))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `**📝 Modelo de mensagem para scrims:**\n\n` +
+      "```\n" +
+      "# LINK SCRIM\n" +
+      "# | - NOME DO ESTÁDIO\n" +
+      "# |- MODO (ex: clássico / futsal)\n" +
+      "# |- Juiz: SEU_NICK\n\n" +
+      "https://www.roblox.com/share?code=SEU_CODIGO&type=Server\n" +
+      "@everyone @here\n" +
+      "```"
+    ))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `**🛒 Como obter o cargo de Scrim Hoster?**\n` +
+      `> Veja a loja em <#${LOJA_CHANNEL_ID}> e compre por **300 Robux**.\n` +
+      `> ⚠️ Precisa do cargo **Olheiro** para realizar peneiras.\n` +
+      `> Depois abra um ticket para liberar o acesso.`
+    ))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`⚠️ **Descumprir as regras resulta em remoção do cargo sem reembolso.**`))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# © 2026 PAFO — Scrim Hoster Rules`))
+    .addActionRowComponents(new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setURL("https://discord.com/channels/1449061779060687063/1449068500567068804").setLabel("Abrir Ticket").setStyle(ButtonStyle.Link).setEmoji("🎫"),
+      new ButtonBuilder().setURL(`https://discord.com/channels/${GUILD_ID}/${LOJA_CHANNEL_ID}`).setLabel("Ver Loja").setStyle(ButtonStyle.Link).setEmoji("🛒")
+    ));
+  await channel.send({ components: [c], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
+}
+
+// ─── NOVO: !drops ─────────────────────────────────────────────────────
+async function cmdDrops(channel) {
+  const c = new ContainerBuilder()
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🎁 DROP DA PAFO`))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `### 🏆 Drop de Olheiro, Scrim Hoster ou Pic Perm!\n\n` +
+      `> 🕐 **Drops acontecem a cada 2 horas!**\n` +
+      `> 🎯 O vencedor escolhe **um** dos cargos abaixo:\n\n` +
+      `> 🔍 **Olheiro** — Realize peneiras oficiais\n` +
+      `> ⚔️ **Scrim Hoster** — Organize scrims oficiais\n` +
+      `> 📸 **Pic Perm** — Envie imagens onde não é permitido`
+    ))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `**🤔 Qual será o próximo sortudo?**\nFique ligado e seja o próximo a ganhar!\n\n` +
+      `✅ **Se ganhar:** Abra um ticket para resgatar seu cargo!`
+    ))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# © 2026 PAFO — Drops System`))
+    .addActionRowComponents(new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setURL("https://discord.com/channels/1449061779060687063/1449068500567068804").setLabel("Resgatar Prêmio").setStyle(ButtonStyle.Link).setEmoji("🎁")
+    ));
+  await channel.send({ components: [c], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
+}
+
+// ─── NOVO: !bio-reward ────────────────────────────────────────────────
+async function cmdBioReward(channel) {
+  const c = new ContainerBuilder()
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🌟 RECOMPENSAS EXCLUSIVAS — BIO & TAG DO DISCORD`))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+
+    // Opção 1: Link na bio
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `### 🔗 Opção 1 — Link na Bio\n` +
+      `> Coloque **\`discord.gg/pafo1\`** na sua **bio do Discord**`
     ))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# © 2026 PAFO — Friendlys Rules`));
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `**🎁 Recompensas:**\n` +
+      `> 🎰 **Mais chances** em todos os sorteios\n` +
+      `> 🏷️ **Cargo exclusivo** de apoiador da PAFO\n` +
+      `> ⏱️ **Cargo temporário** por **3 dias** à sua escolha:\n` +
+      `>   → 🔍 Olheiro **|** ⚔️ Scrim Hoster **|** 📸 Pic Perm`
+    ))
+
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Large).setDivider(true))
+
+    // Opção 2: Tag do servidor
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `### 🏷️ Opção 2 — Tag do Servidor\n` +
+      `> Adote a tag **\`PAFO\`** no seu perfil do Discord`
+    ))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `**🎁 Recompensas:**\n` +
+      `> 🎰 **Mais chances** em todos os sorteios\n` +
+      `> 🏷️ **Cargo exclusivo** de apoiador da PAFO`
+    ))
+
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Large).setDivider(true))
+
+    // Como resgatar
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `### 📋 Como resgatar?\n` +
+      `> **1.** Coloque o link na bio **ou** adote a tag PAFO\n` +
+      `> **2.** Abra um ticket com um **print** comprovando\n` +
+      `> **3.** A staff verificará e liberará suas recompensas!\n\n` +
+      `-# ⚠️ Remover o link/tag resulta na remoção automática dos benefícios.`
+    ))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# © 2026 PAFO — Bio Reward System`))
+    .addActionRowComponents(new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setURL("https://discord.com/channels/1449061779060687063/1449068500567068804").setLabel("Resgatar Recompensas").setStyle(ButtonStyle.Link).setEmoji("🎁")
+    ));
+  await channel.send({ components: [c], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
+}
+
+// ─── NOVO: !parceria ──────────────────────────────────────────────────
+async function cmdParceria(channel) {
+  const c = new ContainerBuilder()
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ***P.A.F.O***`))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `***Welcome to PAFO! The largest server for finding friendly matches in all of MPS and TCS, where you can search for teams, players, friendly matches, futsal games, loans, etc.\n` +
+      `A reconstruction of the old PAFO group with 4500 members, we now have over 3000 people looking for the same thing you're looking for!\n` +
+      `And on top of all that, we have a tournament every month, bringing more competitiveness to the server.***\n\n` +
+      `*And you? What are you waiting for? Come in and take your team to the top of the classic Soccer!*`
+    ))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `**🔗 https://discord.gg/GF5taZTAkB**\n*@everyone @here*`
+    ))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Large).setDivider(true))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `## 📋 Requisitos para Parceria\n\n` +
+      `> 🔴 **1 — 999 membros** → Sem parceria\n` +
+      `> 🟡 **1.000 — 1.999 membros** → @here\n` +
+      `> 🟢 **2.000+ membros** → @everyone\n\n` +
+      `-# *Não aceitamos parceiros com menos de 1.000 membros.*\n\n` +
+      `***@everyone @here***`
+    ))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# © 2026 PAFO — Parcerias`))
+    .addActionRowComponents(new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setURL("https://discord.com/channels/1449061779060687063/1449068500567068804").setLabel("Solicitar Parceria").setStyle(ButtonStyle.Link).setEmoji("🤝")
+    ));
   await channel.send({ components: [c], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
 }
 
