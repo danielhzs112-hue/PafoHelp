@@ -261,28 +261,7 @@ const claimedTickets = new Set();
 const ticketData     = new Map();
 const ratedTickets   = new Set(); // evita múltiplas avaliações
 
-// ─── Dedup de interações via arquivo (resiste a rolling deploys) ──────
-import { mkdirSync, unlinkSync } from "fs";
-mkdirSync("./locks", { recursive: true });
 
-function tryLockInteraction(interactionId) {
-  const path = `./locks/i_${interactionId}.lock`;
-  try {
-    writeFileSync(path, Date.now().toString(), { flag: "wx" }); // falha se já existir
-    setTimeout(() => { try { unlinkSync(path); } catch {} }, 15_000); // auto-cleanup
-    return true;
-  } catch {
-    // Já existe — verifica se expirou (> 15s = lock zumbi)
-    try {
-      const ts = parseInt(readFileSync(path, "utf8") || "0");
-      if (Date.now() - ts > 15_000) {
-        writeFileSync(path, Date.now().toString());
-        return true;
-      }
-    } catch {}
-    return false; // outro processo já está handling
-  }
-}
 
 // ─── guildMemberAdd ───────────────────────────────────────────────────
 client.on("guildMemberAdd", async (member) => {
@@ -572,15 +551,13 @@ async function logPunishment(guild, { tipo, emoji, staffId, membroTag, membroId,
 }
 
 // ─── Interactions ─────────────────────────────────────────────────────
-client.on("interactionCreate", (i) => handleInteraction(i).catch(e => console.error("Erro interaction:", e)));
+client.on("interactionCreate", (i) => handleInteraction(i).catch(e => {
+  // "Unknown interaction" = outro processo já respondeu (rolling deploy normal)
+  if (e?.code === 10062 || e?.message?.includes("Unknown interaction")) return;
+  console.error("Erro interaction:", e);
+}));
 
 async function handleInteraction(interaction) {
-  // Dedup global — impede que dois processos (rolling deploy) tratem o mesmo evento
-  if (!tryLockInteraction(interaction.id)) {
-    console.log(`[DEDUP] Interação ${interaction.id} já sendo tratada por outro processo.`);
-    return;
-  }
-
   // ── /setroletemp ─────────────────────────────────────────────────────
   if (interaction.isChatInputCommand() && interaction.commandName === "setroletemp") {
     if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator))
@@ -1178,6 +1155,10 @@ Tempo restante: **${remaining} minuto(s)**`)
       return interaction.reply({ content: "⏳ Já existe um ticket sendo criado. Aguarde.", flags: MessageFlags.Ephemeral });
     ticketOpening.add(user.id);
 
+    // Faz o defer IMEDIATAMENTE para "reclamar" a interação antes que outro processo responda
+    // Discord só aceita UMA resposta — o segundo processo vai receber erro 10062 (silenciado)
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
     const num  = loadTicketCount() + 1;
     saveTicketCount(num);
     const ticketName = `ticket-${String(num).padStart(4, "0")}`;
@@ -1197,13 +1178,18 @@ Tempo restante: **${remaining} minuto(s)**`)
 
     let ticketCh;
     try { ticketCh = await guild.channels.create(chOpts); }
-    catch (e) { console.error("Erro ao criar canal:", e); ticketOpening.delete(user.id); return; }
+    catch (e) {
+      console.error("Erro ao criar canal:", e);
+      ticketOpening.delete(user.id);
+      interaction.editReply({ content: "❌ Erro ao criar o ticket. Tente novamente." }).catch(() => {});
+      return;
+    }
     ticketOpening.delete(user.id);
 
     const dateStr = getBRT();
     ticketData.set(ticketCh.id, { ticketName, openerId: user.id, label, dateStr, claimerId: null, ratedSent: false, isCompra });
 
-    interaction.reply({ content: `✅ Ticket criado: <#${ticketCh.id}>`, flags: MessageFlags.Ephemeral }).catch(() => {});
+    interaction.editReply({ content: `✅ Ticket criado: <#${ticketCh.id}>` }).catch(() => {});
 
     const staffMentions = STAFF_ROLES.map(id => `<@&${id}>`).join(" ");
     await ticketCh.send({ content: `<@${user.id}> ${staffMentions}`, allowedMentions: { parse: ["users","roles"] } });
