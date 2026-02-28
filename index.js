@@ -25,21 +25,37 @@ import {
   REST,
   Routes,
   SlashCommandBuilder,
+  AuditLogEvent,
 } from "discord.js";
 
 const TOKEN     = process.env.TOKEN;
-const CLIENT_ID = process.env.CLIENT_ID ?? ""; // Adicione CLIENT_ID no seu .env
+const CLIENT_ID = process.env.CLIENT_ID ?? "";
 
-const VERIFIED_ROLE_ID     = "1464623361626734637";
-const WELCOME_CHANNEL_ID   = "1449067457082949752";
-const LOG_CHANNEL_ID       = "1449525327175880865";
-const REVIEW_CHANNEL_ID    = "1462534733270614239";
-const FREEAGENT_CHANNEL_ID = "1461773344620941534";
-const LOJA_CHANNEL_ID      = "1449518786825814036";
-const TICKET_CATEGORY_ID   = "";
-const GUILD_ID             = "1449061779060687063";
+const VERIFIED_ROLE_ID      = "1464623361626734637";
+const WELCOME_CHANNEL_ID    = "1449067457082949752";
+const LOG_CHANNEL_ID        = "1449525327175880865";
+const REVIEW_CHANNEL_ID     = "1462534733270614239";
+const FREEAGENT_CHANNEL_ID  = "1461773344620941534";
+const LOJA_CHANNEL_ID       = "1449518786825814036";
+const TICKET_CATEGORY_ID    = "";
+const GUILD_ID              = "1449061779060687063";
+const PUNITIONS_CHANNEL_ID  = "1450094761452109948"; // canal de punições-loritta
+const SCOUTING_CHANNEL_ID   = "1475890932162367529"; // canal de scoutings
+const FEEDBACK_COMPRAS_ID   = "1462499290810286254"; // canal feedback-compras
+const TICKET_LOG_CHANNEL_ID = "1449525327175880865"; // logs de ticket
+const APPEAL_SERVER         = "https://discord.gg/hvQ8x9JwyB";
+
 const STAFF_ROLES = ["1449062440183664701","1449064374177104074","1454100805496868906"];
 const SERVER_ICON = "https://cdn.discordapp.com/icons/1449061779060687063/ecbd3ce76f39128b1ec08154e7faff75.png?size=2048";
+const PARCERIA_CHANNEL_ID = "1449071892873871522"; // canal de parcerias (links permitidos)
+
+// Cargos de advertência progressivos
+// Adv 1 → cargo + mute  | Adv 2 → cargo + mute  | Adv 3 → ban
+const WARN_ROLES = [
+  "1453806335996203050", // Advertência 1 (Mute)
+  "1453806497409536020", // Advertência 2 (Mute)
+  "1453806627105935461", // Advertência 3 (Ban)
+];
 
 const BANNERS = {
   welcome : "https://cdn.discordapp.com/attachments/1462471559032865115/1474215814038159410/imagem_2026-02-19_222715260-Photoroom.png",
@@ -55,7 +71,7 @@ const BANNERS = {
 import { createServer } from "net";
 const lockServer = createServer();
 lockServer.on("error", () => {
-  console.error("❌ Bot já está rodando! Feche a instância anterior e tente novamente.");
+  console.error("❌ Bot já está rodando! Feche a instância anterior.");
   process.exit(1);
 });
 lockServer.listen(19876, "127.0.0.1");
@@ -67,6 +83,7 @@ const client = new Client({
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildModeration,
   ],
   partials: [Partials.Message, Partials.Channel, Partials.GuildMember],
 });
@@ -80,20 +97,99 @@ client.once("ready", async () => {
 
 // ─── Slash Commands ───────────────────────────────────────────────────
 async function registerSlashCommands() {
-  if (!CLIENT_ID) {
-    console.warn("⚠️  CLIENT_ID não definido. Slash commands não registrados.");
-    return;
-  }
+  if (!CLIENT_ID) { console.warn("⚠️ CLIENT_ID não definido."); return; }
   const commands = [
     new SlashCommandBuilder()
       .setName("setroletemp")
       .setDescription("Dá um cargo temporário a um membro")
-      .addUserOption(o => o.setName("usuario").setDescription("Membro que receberá o cargo").setRequired(true))
-      .addRoleOption(o => o.setName("cargo").setDescription("Cargo a conceder").setRequired(true))
-      .addIntegerOption(o => o.setName("dias").setDescription("Dias de duração").setRequired(true).setMinValue(1).setMaxValue(30))
+      .addUserOption(o => o.setName("usuario").setDescription("Membro").setRequired(true))
+      .addRoleOption(o => o.setName("cargo").setDescription("Cargo").setRequired(true))
+      .addIntegerOption(o => o.setName("dias").setDescription("Dias").setRequired(true).setMinValue(1).setMaxValue(30))
       .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
       .toJSON(),
+
+    new SlashCommandBuilder()
+      .setName("ban")
+      .setDescription("Bane um membro do servidor")
+      .addUserOption(o => o.setName("usuario").setDescription("Membro a banir").setRequired(true))
+      .addStringOption(o => o.setName("motivo").setDescription("Motivo do ban").setRequired(false))
+      .addIntegerOption(o => o.setName("dias").setDescription("Dias de mensagens a deletar (0-7)").setMinValue(0).setMaxValue(7).setRequired(false))
+      .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers)
+      .toJSON(),
+
+    new SlashCommandBuilder()
+      .setName("unban")
+      .setDescription("Desbane um usuário")
+      .addStringOption(o => o.setName("userid").setDescription("ID do usuário a desbanir").setRequired(true))
+      .addStringOption(o => o.setName("motivo").setDescription("Motivo do unban").setRequired(false))
+      .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers)
+      .toJSON(),
+
+    new SlashCommandBuilder()
+      .setName("mute")
+      .setDescription("Silencia (timeout) um membro")
+      .addUserOption(o => o.setName("usuario").setDescription("Membro").setRequired(true))
+      .addIntegerOption(o => o.setName("minutos").setDescription("Duração em minutos").setRequired(true).setMinValue(1).setMaxValue(40320))
+      .addStringOption(o => o.setName("motivo").setDescription("Motivo").setRequired(false))
+      .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+      .toJSON(),
+
+    new SlashCommandBuilder()
+      .setName("unmute")
+      .setDescription("Remove o silenciamento de um membro")
+      .addUserOption(o => o.setName("usuario").setDescription("Membro").setRequired(true))
+      .addStringOption(o => o.setName("motivo").setDescription("Motivo").setRequired(false))
+      .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+      .toJSON(),
+
+    new SlashCommandBuilder()
+      .setName("warn")
+      .setDescription("Adverte um membro (dá cargo de advertência + mute 1h)")
+      .addUserOption(o => o.setName("usuario").setDescription("Membro").setRequired(true))
+      .addStringOption(o => o.setName("motivo").setDescription("Motivo").setRequired(true))
+      .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+      .toJSON(),
+
+    new SlashCommandBuilder()
+      .setName("unwarn")
+      .setDescription("Remove advertência de um membro")
+      .addUserOption(o => o.setName("usuario").setDescription("Membro").setRequired(true))
+      .addStringOption(o => o.setName("motivo").setDescription("Motivo").setRequired(false))
+      .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+      .toJSON(),
+
+    new SlashCommandBuilder()
+      .setName("kick")
+      .setDescription("Expulsa um membro do servidor")
+      .addUserOption(o => o.setName("usuario").setDescription("Membro").setRequired(true))
+      .addStringOption(o => o.setName("motivo").setDescription("Motivo").setRequired(false))
+      .setDefaultMemberPermissions(PermissionFlagsBits.KickMembers)
+      .toJSON(),
+
+    new SlashCommandBuilder()
+      .setName("lock")
+      .setDescription("Trava o canal (impede mensagens de @everyone)")
+      .addChannelOption(o => o.setName("canal").setDescription("Canal a travar (padrão: atual)").setRequired(false))
+      .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+      .toJSON(),
+
+    new SlashCommandBuilder()
+      .setName("unlock")
+      .setDescription("Destravar o canal")
+      .addChannelOption(o => o.setName("canal").setDescription("Canal a destravar (padrão: atual)").setRequired(false))
+      .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+      .toJSON(),
+
+    new SlashCommandBuilder()
+      .setName("slowmode")
+      .setDescription("Define o modo lento do canal")
+      .addIntegerOption(o => o.setName("segundos").setDescription("Segundos (0 = desativar)").setRequired(true).setMinValue(0).setMaxValue(21600))
+      .addChannelOption(o => o.setName("canal").setDescription("Canal (padrão: atual)").setRequired(false))
+      .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+      .toJSON(),
+
   ];
+
   try {
     const rest = new REST({ version: "10" }).setToken(TOKEN);
     await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
@@ -116,6 +212,8 @@ function loadTicketCount() { return loadJSON("./ticketcount.json", { count: 0 })
 function saveTicketCount(n) { saveJSON("./ticketcount.json", { count: n }); }
 function loadTempRoles()    { return loadJSON("./temproles.json", []); }
 function saveTempRoles(d)   { saveJSON("./temproles.json", d); }
+function loadWarns()        { return loadJSON("./warns.json", {}); }
+function saveWarns(d)       { saveJSON("./warns.json", d); }
 
 // ─── Temp Roles checker ───────────────────────────────────────────────
 async function checkTempRoles() {
@@ -156,13 +254,90 @@ const handled        = new Set();
 const cmdCooldown    = new Set();
 const ticketOpening  = new Set();
 const claimedTickets = new Set();
-// channelId → { ticketName, openerId, label, dateStr, claimerId, ratedSent }
 const ticketData     = new Map();
+const ratedTickets   = new Set(); // evita múltiplas avaliações
 
 // ─── guildMemberAdd ───────────────────────────────────────────────────
 client.on("guildMemberAdd", async (member) => {
   const ch = member.guild.channels.cache.get(WELCOME_CHANNEL_ID);
   if (ch) await sendWelcome(ch, member);
+});
+
+// ─── messageCreate — bloqueio de convites ─────────────────────────────
+client.on("messageCreate", async (message) => {
+  if (message.author.bot || !message.guild) return;
+
+  // Bloqueia convites Discord em canais não autorizados
+  const inviteRegex = /discord(?:\.gg|app\.com\/invite|\.com\/invite)\/[a-zA-Z0-9]+/i;
+  const member = message.member;
+  if (inviteRegex.test(message.content) && member) {
+    // ADM sempre pode mandar link
+    const isAdmin = member.permissions.has(PermissionFlagsBits.Administrator);
+    if (isAdmin) return;
+
+    // Canais onde qualquer membro pode mandar convite
+    const allowedChannels = [FREEAGENT_CHANNEL_ID, SCOUTING_CHANNEL_ID, PARCERIA_CHANNEL_ID];
+    // Canais de ticket (nome começa com "ticket-")
+    const isTicketChannel = message.channel.name?.startsWith("ticket-");
+
+    if (!allowedChannels.includes(message.channel.id) && !isTicketChannel) {
+      await message.delete().catch(() => {});
+      try {
+        const dmMsg = new ContainerBuilder()
+          .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+            `## 🚫 Convite não permitido!\n\n` +
+            `<@${message.author.id}>, você **não pode enviar convites** neste canal.\n\n` +
+            `> 🔒 Para manter a organização do servidor **PAFO**, links de convite são **restritos** a canais específicos ou precisam de autorização da staff.\n\n` +
+            `> ❓ Caso tenha dúvidas ou queira solicitar permissão, entre em contato com a equipe de moderação em <#1449068500567068804>.`
+          ))
+          .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Sistema de Moderação`));
+        await message.author.send({ components: [dmMsg], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+      } catch {}
+
+      // Log da mensagem deletada
+      const logCh = message.guild.channels.cache.get(LOG_CHANNEL_ID);
+      if (logCh) {
+        const logMsg = new ContainerBuilder()
+          .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+            `### 📝 Mensagem deletada — Convite bloqueado\n` +
+            `**Usuário:** <@${message.author.id}> (\`${message.author.tag}\`)\n` +
+            `**Canal:** <#${message.channel.id}>\n` +
+            `**Conteúdo:**\n\`\`\`\n${message.content.slice(0, 500)}\n\`\`\`\n` +
+            `**Data:** ${getBRT()}`
+          ));
+        await logCh.send({ components: [logMsg], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+      }
+      return;
+    }
+  }
+
+});
+
+// ─── messageDelete — log tipo Loritta ─────────────────────────────────
+client.on("messageDelete", async (message) => {
+  if (!message.guild || message.author?.bot) return;
+
+  const logCh = message.guild.channels.cache.get(LOG_CHANNEL_ID);
+  if (!logCh) return;
+
+  // Não loga mensagens sem conteúdo relevante
+  if (!message.content && message.attachments.size === 0) return;
+
+  const authorTag  = message.author?.tag ?? "Desconhecido";
+  const authorId   = message.author?.id  ?? "?";
+  const channelId  = message.channel?.id ?? "?";
+  const content    = message.content ? message.content.slice(0, 1000) : "[sem texto]";
+
+  const logMsg = new ContainerBuilder()
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `### 📝 Mensagem de texto deletada\n` +
+      `**Usuário:** <@${authorId}> (\`${authorTag}\`)\n` +
+      `**Canal:** <#${channelId}>\n\n` +
+      `**Mensagem:**\n\`\`\`\n${content}\n\`\`\`\n` +
+      `-# ID do usuário: ${authorId} • ${getBRT()}`
+    ));
+
+  await logCh.send({ components: [logMsg], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
 });
 
 // ─── Text commands (admin only) ───────────────────────────────────────
@@ -206,7 +381,70 @@ client.on("messageCreate", async (message) => {
   return map[content]?.();
 });
 
-// ─── !freeagent (qualquer membro) ────────────────────────────────────
+// ─── Bloqueio de scouting no canal free-agents (via IA) ─────────────────
+const faClassifyCache = new Map(); // evita classificar a mesma msg 2x
+
+async function classifyFreeAgentMessage(content) {
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 10,
+        system: "Você é um classificador de mensagens de Discord de um servidor de futebol no Roblox (MPS/TCS/Soccer). Responda APENAS com uma palavra: JOGADOR ou TIME.\n\nJOGADOR = o próprio jogador se anunciando como free agent, procurando time, ou descrevendo suas habilidades. Exemplos: 'f/a cb', 'procuro time sou mc bom', 'sou gk disponível', 'f/a pe md', 'disponível sou um bom st'.\n\nTIME = um time/clube recrutando jogadores, divulgando vagas ou chamando para peneira. Exemplos: 'VAGAS PARA O BARCELONA', 'Real Madrid recruta', 'nosso time procura CB', 'peneira aberta', 'clique para entrar no time'.",
+        messages: [{ role: "user", content: `Classifique esta mensagem: "${content.slice(0, 300)}"` }]
+      })
+    });
+    const data = await response.json();
+    const result = data.content?.[0]?.text?.trim().toUpperCase() ?? "JOGADOR";
+    return result.includes("TIME") ? "TIME" : "JOGADOR";
+  } catch {
+    return "JOGADOR"; // em caso de erro, não bloqueia
+  }
+}
+
+client.on("messageCreate", async (message) => {
+  if (message.author.bot || !message.guild) return;
+  if (message.channel.id !== FREEAGENT_CHANNEL_ID) return;
+
+  const member = message.member;
+  if (!member) return;
+
+  // Admins e staff liberados
+  if (member.permissions.has(PermissionFlagsBits.Administrator) || isStaff(member)) return;
+
+  // Ignora comandos !freeagent (processados pelo listener abaixo)
+  if (message.content.trim().toLowerCase().startsWith("!freeagent")) return;
+
+  // Ignora mensagens muito curtas (tipo "ok", "gg") — provavelmente não é scouting
+  const content = message.content.trim();
+  if (content.length < 3) return;
+
+  // Classifica com IA
+  const tipo = await classifyFreeAgentMessage(content);
+
+  if (tipo === "TIME") {
+    await message.delete().catch(() => {});
+    const w = await message.channel.send({
+      content: `<@${message.author.id}> ❌ Divulgações de **times/vagas** não são permitidas aqui! Este canal é para **jogadores se anunciarem** como free agents.\n> 👉 Use o canal <#${SCOUTING_CHANNEL_ID}> para divulgar seu time.`
+    }).catch(() => null);
+    if (w) setTimeout(() => w.delete().catch(() => {}), 10_000);
+
+    // Log
+    const logCh = message.guild.channels.cache.get(LOG_CHANNEL_ID);
+    logCh?.send({ embeds: [new EmbedBuilder()
+      .setTitle("🚫 Scouting bloqueado no free-agents")
+      .addFields(
+        { name: "Usuário", value: `<@${message.author.id}>`, inline: true },
+        { name: "Conteúdo", value: content.slice(0, 500), inline: false },
+      )
+      .setColor(0xED4245).setFooter({ text: "PAFO — IA Filter", iconURL: SERVER_ICON }).setTimestamp()
+    ]}).catch(() => {});
+  }
+});
+
+// ─── !freeagent ───────────────────────────────────────────────────────
 client.on("messageCreate", async (message) => {
   if (message.author.bot || !message.guild) return;
   if (!message.content.trim().toLowerCase().startsWith("!freeagent")) return;
@@ -269,6 +507,40 @@ function isStaff(member) {
   return STAFF_ROLES.some(id => member.roles.cache.has(id)) || member.permissions.has(PermissionFlagsBits.Administrator);
 }
 
+// ─── Log de punição tipo Loritta ──────────────────────────────────────
+async function logPunishment(guild, { tipo, emoji, staffId, membroTag, membroId, motivo, extra = "" }) {
+  const punCh = guild.channels.cache.get(PUNITIONS_CHANNEL_ID);
+  if (!punCh) return;
+
+  const embed = new EmbedBuilder()
+    .setTitle(`${emoji} ${tipo}`)
+    .setDescription(`• O usuário foi ${tipo === "Banimento Aplicado!" ? "removido permanentemente" : tipo === "Silenciamento aplicado" ? "temporariamente impedido de enviar mensagens" : "punido"} do servidor.`)
+    .addFields(
+      { name: "Staff",  value: `<@${staffId}>`,                    inline: false },
+      { name: "Membro", value: `${membroTag}`,                     inline: false },
+      { name: "Punição",value: `${tipo} • Sistema de Moderação`,   inline: false },
+    );
+
+  if (motivo) embed.addFields({ name: "Motivo", value: motivo, inline: false });
+  if (extra)  embed.setFooter({ text: extra });
+
+  embed.setColor(
+    tipo.includes("Banimento")    ? 0xED4245 :
+    tipo.includes("Silenciamento")? 0xFEE75C :
+    tipo.includes("Kick")         ? 0xFFA500 :
+    tipo.includes("Advertência")  ? 0xFF6B35 : 0x5865F2
+  ).setTimestamp();
+
+  // Tenta pegar o avatar do membro
+  try {
+    const guild2 = guild;
+    const member = await guild2.members.fetch(membroId).catch(() => null);
+    if (member) embed.setThumbnail(member.user.displayAvatarURL({ size: 128 }));
+  } catch {}
+
+  await punCh.send({ embeds: [embed] }).catch(() => {});
+}
+
 // ─── Interactions ─────────────────────────────────────────────────────
 client.on("interactionCreate", (i) => handleInteraction(i).catch(e => console.error("Erro interaction:", e)));
 
@@ -312,6 +584,404 @@ async function handleInteraction(interaction) {
       )
       .setColor(0xFEE75C).setFooter({ text: "PAFO — Temp Role System", iconURL: SERVER_ICON }).setTimestamp()
     ]}).catch(() => {});
+    return;
+  }
+
+  // ── /ban ──────────────────────────────────────────────────────────────
+  if (interaction.isChatInputCommand() && interaction.commandName === "ban") {
+    const target = interaction.options.getUser("usuario");
+    const motivo = interaction.options.getString("motivo") ?? "Sem motivo especificado";
+    const dias   = interaction.options.getInteger("dias") ?? 0;
+
+    if (!target) return interaction.reply({ content: "❌ Usuário não encontrado.", flags: MessageFlags.Ephemeral });
+
+    // DM ao banido antes de banir
+    try {
+      const dm = new ContainerBuilder()
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+          `## 🔨 Você foi banido do servidor PAFO\n\n` +
+          `**Motivo:** ${motivo}\n` +
+          `**Staff:** <@${interaction.user.id}>\n\n` +
+          `Se acredita que o ban foi injusto, use o servidor de appeal:\n🔗 ${APPEAL_SERVER}`
+        ))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Sistema de Moderação`));
+      await target.send({ components: [dm], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+    } catch {}
+
+    try {
+      await interaction.guild.members.ban(target.id, { reason: `${motivo} | Staff: ${interaction.user.tag}`, deleteMessageDays: dias });
+    } catch (e) {
+      return interaction.reply({ content: `❌ Erro ao banir: ${e.message}`, flags: MessageFlags.Ephemeral });
+    }
+
+    await interaction.reply({ embeds: [new EmbedBuilder()
+      .setTitle("🔨 Usuário Banido")
+      .addFields(
+        { name: "Usuário", value: `${target.tag} (\`${target.id}\`)`, inline: false },
+        { name: "Motivo",  value: motivo, inline: false },
+        { name: "Staff",   value: `<@${interaction.user.id}>`, inline: true },
+        { name: "Data",    value: getBRT(), inline: true },
+      )
+      .setColor(0xED4245).setFooter({ text: `ID: ${target.id}` }).setTimestamp()
+    ]});
+
+    await logPunishment(interaction.guild, {
+      tipo: "Banimento Aplicado!", emoji: "🔨",
+      staffId: interaction.user.id, membroTag: target.tag, membroId: target.id, motivo
+    });
+    return;
+  }
+
+  // ── /unban ────────────────────────────────────────────────────────────
+  if (interaction.isChatInputCommand() && interaction.commandName === "unban") {
+    const userId = interaction.options.getString("userid")?.trim();
+    const motivo = interaction.options.getString("motivo") ?? "Sem motivo especificado";
+
+    try {
+      const ban = await interaction.guild.bans.fetch(userId).catch(() => null);
+      if (!ban) return interaction.reply({ content: "❌ Esse usuário não está banido.", flags: MessageFlags.Ephemeral });
+      await interaction.guild.members.unban(userId, motivo);
+    } catch (e) {
+      return interaction.reply({ content: `❌ Erro ao desbanir: ${e.message}`, flags: MessageFlags.Ephemeral });
+    }
+
+    await interaction.reply({ embeds: [new EmbedBuilder()
+      .setTitle("✅ Usuário Desbanido")
+      .addFields(
+        { name: "ID",     value: userId, inline: true },
+        { name: "Motivo", value: motivo, inline: false },
+        { name: "Staff",  value: `<@${interaction.user.id}>`, inline: true },
+      )
+      .setColor(0x57F287).setTimestamp()
+    ]});
+
+    interaction.guild.channels.cache.get(LOG_CHANNEL_ID)?.send({ embeds: [new EmbedBuilder()
+      .setTitle("✅ Unban Aplicado")
+      .addFields(
+        { name: "ID",     value: userId, inline: true },
+        { name: "Motivo", value: motivo, inline: false },
+        { name: "Staff",  value: `<@${interaction.user.id}>`, inline: true },
+      )
+      .setColor(0x57F287).setFooter({ text: "PAFO — Sistema de Moderação", iconURL: SERVER_ICON }).setTimestamp()
+    ]}).catch(() => {});
+    return;
+  }
+
+  // ── /mute ─────────────────────────────────────────────────────────────
+  if (interaction.isChatInputCommand() && interaction.commandName === "mute") {
+    const target  = interaction.options.getMember("usuario");
+    const minutos = interaction.options.getInteger("minutos");
+    const motivo  = interaction.options.getString("motivo") ?? "Sem motivo especificado";
+
+    if (!target) return interaction.reply({ content: "❌ Membro não encontrado.", flags: MessageFlags.Ephemeral });
+
+    const until = new Date(Date.now() + minutos * 60_000);
+    try {
+      await target.timeout(minutos * 60_000, `${motivo} | Staff: ${interaction.user.tag}`);
+    } catch (e) {
+      return interaction.reply({ content: `❌ Erro ao silenciar: ${e.message}`, flags: MessageFlags.Ephemeral });
+    }
+
+    await interaction.reply({ embeds: [new EmbedBuilder()
+      .setTitle("🔇 Membro Silenciado")
+      .addFields(
+        { name: "Membro",  value: `<@${target.id}>`, inline: true },
+        { name: "Duração", value: `${minutos} minuto(s)`, inline: true },
+        { name: "Motivo",  value: motivo, inline: false },
+        { name: "Staff",   value: `<@${interaction.user.id}>`, inline: true },
+      )
+      .setColor(0xFEE75C).setTimestamp()
+    ]});
+
+    await logPunishment(interaction.guild, {
+      tipo: "Silenciamento aplicado", emoji: "🔇",
+      staffId: interaction.user.id, membroTag: target.user.tag, membroId: target.id,
+      motivo, extra: `Duração: ${minutos} minuto(s)`
+    });
+    return;
+  }
+
+  // ── /unmute ───────────────────────────────────────────────────────────
+  if (interaction.isChatInputCommand() && interaction.commandName === "unmute") {
+    const target = interaction.options.getMember("usuario");
+    const motivo = interaction.options.getString("motivo") ?? "Sem motivo especificado";
+
+    if (!target) return interaction.reply({ content: "❌ Membro não encontrado.", flags: MessageFlags.Ephemeral });
+
+    try {
+      await target.timeout(null, `${motivo} | Staff: ${interaction.user.tag}`);
+    } catch (e) {
+      return interaction.reply({ content: `❌ Erro ao remover silenciamento: ${e.message}`, flags: MessageFlags.Ephemeral });
+    }
+
+    await interaction.reply({ embeds: [new EmbedBuilder()
+      .setTitle("🔊 Silenciamento Removido")
+      .addFields(
+        { name: "Membro", value: `<@${target.id}>`, inline: true },
+        { name: "Motivo", value: motivo, inline: false },
+        { name: "Staff",  value: `<@${interaction.user.id}>`, inline: true },
+      )
+      .setColor(0x57F287).setTimestamp()
+    ]});
+
+    interaction.guild.channels.cache.get(LOG_CHANNEL_ID)?.send({ embeds: [new EmbedBuilder()
+      .setTitle("🔊 Unmute Aplicado")
+      .addFields(
+        { name: "Membro", value: `<@${target.id}>`, inline: true },
+        { name: "Motivo", value: motivo, inline: false },
+        { name: "Staff",  value: `<@${interaction.user.id}>`, inline: true },
+      )
+      .setColor(0x57F287).setFooter({ text: "PAFO — Sistema de Moderação", iconURL: SERVER_ICON }).setTimestamp()
+    ]}).catch(() => {});
+    return;
+  }
+
+  // ── /warn ─────────────────────────────────────────────────────────────
+  if (interaction.isChatInputCommand() && interaction.commandName === "warn") {
+    const target = interaction.options.getMember("usuario");
+    const motivo = interaction.options.getString("motivo");
+
+    if (!target) return interaction.reply({ content: "❌ Membro não encontrado.", flags: MessageFlags.Ephemeral });
+
+    // Persiste advertência
+    const warns = loadWarns();
+    if (!warns[target.id]) warns[target.id] = [];
+    warns[target.id].push({ motivo, staffId: interaction.user.id, data: getBRT() });
+    saveWarns(warns);
+    const warnCount = warns[target.id].length;
+
+    // Advertência 3 = BAN
+    if (warnCount >= 3) {
+      const banRole = interaction.guild.roles.cache.get(WARN_ROLES[2]);
+      if (banRole) await target.roles.add(banRole).catch(() => {});
+      // DM antes de banir
+      try {
+        const dm = new ContainerBuilder()
+          .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+            `## 🔨 Você foi banido do servidor PAFO\n\n` +
+            `**Motivo:** 3ª Advertência — ${motivo}\n` +
+            `**Staff:** <@${interaction.user.id}>\n\n` +
+            `Se acredita que o ban foi injusto:\n🔗 ${APPEAL_SERVER}`
+          ))
+          .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Sistema de Moderação`));
+        await target.send({ components: [dm], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+      } catch {}
+      await interaction.guild.members.ban(target.id, { reason: `3ª Advertência: ${motivo} | Staff: ${interaction.user.tag}` }).catch(() => {});
+      await interaction.reply({ embeds: [new EmbedBuilder()
+        .setTitle("🔨 3ª Advertência — Banimento Aplicado")
+        .addFields(
+          { name: "Membro", value: `<@${target.id}>`, inline: true },
+          { name: "Motivo", value: motivo, inline: false },
+          { name: "Staff",  value: `<@${interaction.user.id}>`, inline: true },
+        )
+        .setColor(0xED4245).setTimestamp()
+      ]});
+      await logPunishment(interaction.guild, {
+        tipo: "Banimento Aplicado! (3ª Adv)", emoji: "🔨",
+        staffId: interaction.user.id, membroTag: target.user.tag, membroId: target.id,
+        motivo: `3ª Advertência: ${motivo}`
+      });
+      return;
+    }
+
+    // Adv 1 ou Adv 2 = cargo + mute
+    const warnRoleId = WARN_ROLES[warnCount - 1];
+    const warnRole = interaction.guild.roles.cache.get(warnRoleId);
+    // Remove cargo da advertência anterior se existir
+    if (warnCount > 1) {
+      const prevRole = interaction.guild.roles.cache.get(WARN_ROLES[warnCount - 2]);
+      if (prevRole) await target.roles.remove(prevRole).catch(() => {});
+    }
+    if (warnRole) await target.roles.add(warnRole).catch(() => {});
+
+    // Mute de 1 hora
+    await target.timeout(3_600_000, `Advertência ${warnCount}: ${motivo} | Staff: ${interaction.user.tag}`).catch(() => {});
+
+    // DM ao membro
+    try {
+      const dm = new ContainerBuilder()
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+          `## ⚠️ Você recebeu uma advertência no servidor PAFO\n\n` +
+          `**Motivo:** ${motivo}\n` +
+          `**Staff:** <@${interaction.user.id}>\n` +
+          `**Total de advertências:** ${warnCount}/3\n\n` +
+          `> Você também foi silenciado por **1 hora** como consequência.\n` +
+          `> ⚠️ Na **3ª advertência** você será **banido** automaticamente.\n` +
+          `-# PAFO — Sistema de Moderação`
+        ));
+      await target.send({ components: [dm], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+    } catch {}
+
+    await interaction.reply({ embeds: [new EmbedBuilder()
+      .setTitle(`⚠️ Advertência ${warnCount}/3 Aplicada`)
+      .addFields(
+        { name: "Membro",   value: `<@${target.id}>`, inline: true },
+        { name: "Motivo",   value: motivo, inline: false },
+        { name: "Staff",    value: `<@${interaction.user.id}>`, inline: true },
+        { name: "Total",    value: `${warnCount}/3 advertência(s)`, inline: true },
+      )
+      .setColor(0xFF6B35).setTimestamp()
+    ]});
+
+    await logPunishment(interaction.guild, {
+      tipo: "Advertência Aplicada", emoji: "⚠️",
+      staffId: interaction.user.id, membroTag: target.user.tag, membroId: target.id,
+      motivo, extra: `Total: ${warnCount}/3 • Mute: 1h`
+    });
+    return;
+  }
+
+  // ── /unwarn ───────────────────────────────────────────────────────────
+  if (interaction.isChatInputCommand() && interaction.commandName === "unwarn") {
+    const target = interaction.options.getMember("usuario");
+    const motivo = interaction.options.getString("motivo") ?? "Sem motivo especificado";
+
+    if (!target) return interaction.reply({ content: "❌ Membro não encontrado.", flags: MessageFlags.Ephemeral });
+
+    const warns = loadWarns();
+    const count  = warns[target.id]?.length ?? 0;
+    if (count === 0)
+      return interaction.reply({ content: "❌ Este membro não possui advertências.", flags: MessageFlags.Ephemeral });
+
+    const prevCount = warns[target.id].length;
+    warns[target.id].pop(); // remove a última
+    const newCount = warns[target.id].length;
+    if (newCount === 0) delete warns[target.id];
+    // Remove cargo da advertência anterior
+    if (prevCount >= 1 && prevCount <= 3) {
+      const oldRole = interaction.guild.roles.cache.get(WARN_ROLES[prevCount - 1]);
+      if (oldRole) await target.roles.remove(oldRole).catch(() => {});
+    }
+    // Devolve cargo da nova contagem (se ainda tiver warns)
+    if (newCount >= 1 && newCount <= 2) {
+      const newRole = interaction.guild.roles.cache.get(WARN_ROLES[newCount - 1]);
+      if (newRole) await target.roles.add(newRole).catch(() => {});
+    }
+    saveWarns(warns);
+
+    await interaction.reply({ embeds: [new EmbedBuilder()
+      .setTitle("✅ Advertência Removida")
+      .addFields(
+        { name: "Membro",    value: `<@${target.id}>`, inline: true },
+        { name: "Motivo",    value: motivo, inline: false },
+        { name: "Staff",     value: `<@${interaction.user.id}>`, inline: true },
+        { name: "Restantes", value: `${warns[target.id]?.length ?? 0} advertência(s)`, inline: true },
+      )
+      .setColor(0x57F287).setTimestamp()
+    ]});
+
+    interaction.guild.channels.cache.get(LOG_CHANNEL_ID)?.send({ embeds: [new EmbedBuilder()
+      .setTitle("✅ Unwarn Aplicado")
+      .addFields(
+        { name: "Membro",    value: `<@${target.id}>`, inline: true },
+        { name: "Motivo",    value: motivo, inline: false },
+        { name: "Staff",     value: `<@${interaction.user.id}>`, inline: true },
+        { name: "Restantes", value: `${warns[target.id]?.length ?? 0}`, inline: true },
+      )
+      .setColor(0x57F287).setFooter({ text: "PAFO — Sistema de Moderação", iconURL: SERVER_ICON }).setTimestamp()
+    ]}).catch(() => {});
+    return;
+  }
+
+  // ── /kick ─────────────────────────────────────────────────────────────
+  if (interaction.isChatInputCommand() && interaction.commandName === "kick") {
+    const target = interaction.options.getMember("usuario");
+    const motivo = interaction.options.getString("motivo") ?? "Sem motivo especificado";
+
+    if (!target) return interaction.reply({ content: "❌ Membro não encontrado.", flags: MessageFlags.Ephemeral });
+
+    try {
+      await target.kick(`${motivo} | Staff: ${interaction.user.tag}`);
+    } catch (e) {
+      return interaction.reply({ content: `❌ Erro ao expulsar: ${e.message}`, flags: MessageFlags.Ephemeral });
+    }
+
+    await interaction.reply({ embeds: [new EmbedBuilder()
+      .setTitle("👢 Membro Expulso")
+      .addFields(
+        { name: "Membro", value: `${target.user.tag} (\`${target.id}\`)`, inline: false },
+        { name: "Motivo", value: motivo, inline: false },
+        { name: "Staff",  value: `<@${interaction.user.id}>`, inline: true },
+      )
+      .setColor(0xFFA500).setTimestamp()
+    ]});
+
+    await logPunishment(interaction.guild, {
+      tipo: "Kick Aplicado", emoji: "👢",
+      staffId: interaction.user.id, membroTag: target.user.tag, membroId: target.id, motivo
+    });
+    return;
+  }
+
+  // ── /lock ─────────────────────────────────────────────────────────────
+  if (interaction.isChatInputCommand() && interaction.commandName === "lock") {
+    const canal = interaction.options.getChannel("canal") ?? interaction.channel;
+    try {
+      await canal.permissionOverwrites.edit(interaction.guild.roles.everyone, { SendMessages: false });
+    } catch (e) {
+      return interaction.reply({ content: `❌ Erro: ${e.message}`, flags: MessageFlags.Ephemeral });
+    }
+
+    await interaction.reply({ embeds: [new EmbedBuilder()
+      .setTitle("🔒 Canal Travado")
+      .setDescription(`<#${canal.id}> foi travado. Nenhum membro pode enviar mensagens.`)
+      .addFields({ name: "Staff", value: `<@${interaction.user.id}>`, inline: true })
+      .setColor(0xED4245).setTimestamp()
+    ]});
+
+    await canal.send({ embeds: [new EmbedBuilder()
+      .setTitle("🔒 Canal Travado")
+      .setDescription(`Este canal foi travado por <@${interaction.user.id}>.`)
+      .setColor(0xED4245).setTimestamp()
+    ]}).catch(() => {});
+    return;
+  }
+
+  // ── /unlock ───────────────────────────────────────────────────────────
+  if (interaction.isChatInputCommand() && interaction.commandName === "unlock") {
+    const canal = interaction.options.getChannel("canal") ?? interaction.channel;
+    try {
+      await canal.permissionOverwrites.edit(interaction.guild.roles.everyone, { SendMessages: null });
+    } catch (e) {
+      return interaction.reply({ content: `❌ Erro: ${e.message}`, flags: MessageFlags.Ephemeral });
+    }
+
+    await interaction.reply({ embeds: [new EmbedBuilder()
+      .setTitle("🔓 Canal Destravado")
+      .setDescription(`<#${canal.id}> foi destravado. Membros podem enviar mensagens novamente.`)
+      .addFields({ name: "Staff", value: `<@${interaction.user.id}>`, inline: true })
+      .setColor(0x57F287).setTimestamp()
+    ]});
+
+    await canal.send({ embeds: [new EmbedBuilder()
+      .setTitle("🔓 Canal Destravado")
+      .setDescription(`Este canal foi destravado por <@${interaction.user.id}>.`)
+      .setColor(0x57F287).setTimestamp()
+    ]}).catch(() => {});
+    return;
+  }
+
+  // ── /slowmode ─────────────────────────────────────────────────────────
+  if (interaction.isChatInputCommand() && interaction.commandName === "slowmode") {
+    const segundos = interaction.options.getInteger("segundos");
+    const canal    = interaction.options.getChannel("canal") ?? interaction.channel;
+
+    try {
+      await canal.setRateLimitPerUser(segundos);
+    } catch (e) {
+      return interaction.reply({ content: `❌ Erro: ${e.message}`, flags: MessageFlags.Ephemeral });
+    }
+
+    const desc = segundos === 0
+      ? `Modo lento **desativado** em <#${canal.id}>.`
+      : `Modo lento de **${segundos}s** ativado em <#${canal.id}>.`;
+
+    await interaction.reply({ embeds: [new EmbedBuilder()
+      .setTitle("⏱️ Slowmode Atualizado")
+      .setDescription(desc)
+      .addFields({ name: "Staff", value: `<@${interaction.user.id}>`, inline: true })
+      .setColor(0xFEE75C).setTimestamp()
+    ]});
     return;
   }
 
@@ -389,6 +1059,7 @@ async function handleInteraction(interaction) {
     const tipo   = interaction.customId.replace("ticket_confirm_", "");
     const labels = { duvidas:"Dúvidas", parcerias:"Parcerias", compras:"Compras", denuncias:"Denúncias", outros:"Outros" };
     const label  = labels[tipo] ?? tipo;
+    const isCompra = tipo === "compras";
     const guild  = interaction.guild;
     const user   = interaction.user;
 
@@ -419,7 +1090,7 @@ async function handleInteraction(interaction) {
     ticketOpening.delete(user.id);
 
     const dateStr = getBRT();
-    ticketData.set(ticketCh.id, { ticketName, openerId: user.id, label, dateStr, claimerId: null, ratedSent: false });
+    ticketData.set(ticketCh.id, { ticketName, openerId: user.id, label, dateStr, claimerId: null, ratedSent: false, isCompra });
 
     interaction.reply({ content: `✅ Ticket criado: <#${ticketCh.id}>`, flags: MessageFlags.Ephemeral }).catch(() => {});
 
@@ -446,7 +1117,9 @@ async function handleInteraction(interaction) {
 
     await ticketCh.send({ components: [c], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
 
-    guild.channels.cache.get(LOG_CHANNEL_ID)?.send({ embeds: [new EmbedBuilder()
+    // Log de abertura
+    const logCh = guild.channels.cache.get(isCompra ? TICKET_LOG_CHANNEL_ID : LOG_CHANNEL_ID);
+    logCh?.send({ embeds: [new EmbedBuilder()
       .setTitle("🎫 Ticket Aberto")
       .addFields(
         { name: "Canal",      value: `<#${ticketCh.id}>`, inline: true },
@@ -608,8 +1281,16 @@ async function handleInteraction(interaction) {
 
     const parts    = interaction.customId.split("_");
     const openerId = parts[3] ?? null;
+    const ch       = interaction.channel;
+    const data     = ticketData.get(ch.id);
+    const isCompra = data?.isCompra ?? false;
 
-    claimedTickets.delete(interaction.channel.id);
+    // Evita múltiplos fechamentos simultâneos
+    if (ratedTickets.has(ch.id))
+      return interaction.reply({ content: "⚠️ Este ticket já está sendo fechado.", flags: MessageFlags.Ephemeral });
+    ratedTickets.add(ch.id);
+
+    claimedTickets.delete(ch.id);
     await interaction.reply({ content: "🔒 Ticket será deletado em **5 segundos**.", flags: MessageFlags.Ephemeral });
 
     const closing = new ContainerBuilder()
@@ -617,13 +1298,10 @@ async function handleInteraction(interaction) {
         `## 🔒 Ticket Sendo Fechado\n\n> Fechado por <@${interaction.user.id}>\n> Deletado em **5 segundos.**`
       ))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`));
-    await interaction.channel.send({ components: [closing], flags: MessageFlags.IsComponentsV2 });
+    await ch.send({ components: [closing], flags: MessageFlags.IsComponentsV2 });
 
-    const ch         = interaction.channel;
-    const data       = ticketData.get(ch.id);
     const ticketName = data?.ticketName ?? ch.name;
     const claimerId  = data?.claimerId  ?? null;
-    const alreadySent = data?.ratedSent ?? false;
     const dateStr    = getBRT();
 
     // Transcript
@@ -637,13 +1315,16 @@ async function handleInteraction(interaction) {
     } catch { txt += "\n⚠️ Erro ao carregar histórico."; }
     const file = new AttachmentBuilder(Buffer.from(txt, "utf-8"), { name: `transcript-${ch.name}.txt` });
 
-    interaction.guild.channels.cache.get(LOG_CHANNEL_ID)?.send({
+    // Log no canal correto (compras → feedback-compras, outros → log geral)
+    const logTargetId = isCompra ? FEEDBACK_COMPRAS_ID : LOG_CHANNEL_ID;
+    interaction.guild.channels.cache.get(logTargetId)?.send({
       embeds: [new EmbedBuilder()
         .setTitle("🔒 Ticket Fechado")
         .addFields(
           { name: "Canal",      value: ch.name,                                          inline: true },
           { name: "Fechado por",value: `<@${interaction.user.id}>`,                      inline: true },
           { name: "Criado por", value: openerId ? `<@${openerId}>` : "Desconhecido",     inline: true },
+          { name: "Tipo",       value: data?.label ?? "Desconhecido",                    inline: true },
           { name: "Data",       value: dateStr,                                           inline: true },
         )
         .setColor(0xED4245).setFooter({ text: "PAFO — Ticket System", iconURL: SERVER_ICON }).setTimestamp()
@@ -651,8 +1332,8 @@ async function handleInteraction(interaction) {
       files: [file]
     });
 
-    // DM de avaliação — apenas 1 vez por ticket
-    if (openerId && !alreadySent) {
+    // DM de avaliação — apenas 1 vez por ticket (controlado por ratedTickets + ratedSent no data)
+    if (openerId && !(data?.ratedSent)) {
       if (data) data.ratedSent = true;
       const opener = await interaction.guild.members.fetch(openerId).catch(() => null);
       if (opener) {
@@ -679,7 +1360,10 @@ async function handleInteraction(interaction) {
     }
 
     ticketData.delete(ch.id);
-    setTimeout(() => ch.delete().catch(() => {}), 5000);
+    setTimeout(() => {
+      ch.delete().catch(() => {});
+      ratedTickets.delete(ch.id); // limpa depois de deletar
+    }, 5000);
     return;
   }
 
@@ -704,7 +1388,7 @@ async function handleInteraction(interaction) {
       openerId ? ch.permissionOverwrites.edit(openerId, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true }).catch(() => {}) : null,
     ]);
 
-    const data      = ticketData.get(ch.id);
+    const data       = ticketData.get(ch.id);
     const ticketInfo = data
       ? `**Nome do Ticket:** \`${data.ticketName}\`\n**Criado Por:** <@${data.openerId}>\n**Opened Date:** ${data.dateStr}\n**Ticket Type:** ${data.label}`
       : `**Criado Por:** <@${openerId}>`;
@@ -734,7 +1418,7 @@ async function handleInteraction(interaction) {
     return;
   }
 
-  // ── Free Agent helper ─────────────────────────────────────────────────
+  // ── Free Agent helpers ─────────────────────────────────────────────────
   async function parseFa(channelId, msgId) {
     try {
       const ch  = await client.channels.fetch(channelId).catch(() => null);
@@ -756,7 +1440,6 @@ async function handleInteraction(interaction) {
     } catch { return null; }
   }
 
-  // ── FA Contratar ──────────────────────────────────────────────────────
   if (interaction.isButton() && interaction.customId.startsWith("fac_")) {
     const [, userId, msgId] = interaction.customId.split("_");
     if (interaction.user.id === userId)
@@ -786,7 +1469,6 @@ async function handleInteraction(interaction) {
     return interaction.reply({ components: [confirm], flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 });
   }
 
-  // ── FA Saber Mais ─────────────────────────────────────────────────────
   if (interaction.isButton() && interaction.customId.startsWith("fas_")) {
     const [, userId, msgId] = interaction.customId.split("_");
     const fa = await parseFa(interaction.channel.id, msgId);
@@ -968,7 +1650,7 @@ async function cmdInfo(channel) {
       `> • \`Linguagem inadequada\`\n> • \`Spam ou flood\`\n> • \`Links não autorizados\`\n> • \`Conteúdo off-topic\`\n> • \`Desobedecer staff\``
     ))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Large).setDivider(true))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`🔗 **Servidor de Appeal:** https://discord.gg/8eAK5xVHPY`))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`🔗 **Servidor de Appeal:** ${APPEAL_SERVER}`))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# © 2026 PAFO`))
     .addActionRowComponents(new ActionRowBuilder().addComponents(
       new ButtonBuilder().setURL("https://discord.com/channels/1449061779060687063/1449068500567068804").setLabel("Abrir Ticket").setStyle(ButtonStyle.Link).setEmoji("🎫")
@@ -1066,7 +1748,6 @@ async function cmdFriendlys(channel) {
   await channel.send({ components: [c], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
 }
 
-// ─── NOVO: !olheiro-rules ─────────────────────────────────────────────
 async function cmdOlheiroRules(channel) {
   const c = new ContainerBuilder()
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🔍 REGRAS PARA OLHEIROS — PAFO`))
@@ -1110,7 +1791,6 @@ async function cmdOlheiroRules(channel) {
   await channel.send({ components: [c], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
 }
 
-// ─── NOVO: !scrimhoster-rules ─────────────────────────────────────────
 async function cmdScrimHosterRules(channel) {
   const c = new ContainerBuilder()
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## ⚔️ REGRAS PARA SCRIM HOSTERS — PAFO`))
@@ -1151,7 +1831,6 @@ async function cmdScrimHosterRules(channel) {
   await channel.send({ components: [c], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
 }
 
-// ─── NOVO: !drops ─────────────────────────────────────────────────────
 async function cmdDrops(channel) {
   const c = new ContainerBuilder()
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🎁 DROPS DA PAFO`))
@@ -1177,13 +1856,10 @@ async function cmdDrops(channel) {
   await channel.send({ components: [c], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
 }
 
-// ─── NOVO: !bio-reward ────────────────────────────────────────────────
 async function cmdBioReward(channel) {
   const c = new ContainerBuilder()
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🌟 RECOMPENSAS EXCLUSIVAS — BIO & TAG DO DISCORD`))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
-
-    // Opção 1: Link na bio
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
       `### 🔗 Opção 1 — Link na Bio\n` +
       `> Coloque **\`discord.gg/pafo1\`** na sua **bio do Discord**`
@@ -1196,10 +1872,7 @@ async function cmdBioReward(channel) {
       `> ⏱️ **Cargo temporário** por **3 dias** à sua escolha:\n` +
       `>   → 🔍 Olheiro **|** ⚔️ Scrim Hoster **|** 📸 Pic Perm`
     ))
-
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Large).setDivider(true))
-
-    // Opção 2: Tag do servidor
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
       `### 🏷️ Opção 2 — Tag do Servidor\n` +
       `> Adote a tag **\`PAFO\`** no seu perfil do Discord`
@@ -1210,10 +1883,7 @@ async function cmdBioReward(channel) {
       `> 🎰 **Mais chances** em todos os sorteios\n` +
       `> 🏷️ **Cargo exclusivo** de apoiador da PAFO`
     ))
-
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Large).setDivider(true))
-
-    // Como resgatar
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
       `### 📋 Como resgatar?\n` +
       `> **1.** Coloque o link na bio **ou** adote a tag PAFO\n` +
@@ -1228,7 +1898,6 @@ async function cmdBioReward(channel) {
   await channel.send({ components: [c], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
 }
 
-// ─── NOVO: !parceria ──────────────────────────────────────────────────
 async function cmdParceria(channel) {
   const c = new ContainerBuilder()
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`# ***P.A.F.O***`))
