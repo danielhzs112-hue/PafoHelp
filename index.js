@@ -217,6 +217,8 @@ function saveTempRoles(d)   { saveJSON("./temproles.json", d); }
 function loadWarns()        { return loadJSON("./warns.json", {}); }
 function saveWarns(d)       { saveJSON("./warns.json", d); }
 
+
+
 // ─── Temp Roles checker ───────────────────────────────────────────────
 async function checkTempRoles() {
   const now  = Date.now();
@@ -258,6 +260,29 @@ const ticketOpening  = new Set();
 const claimedTickets = new Set();
 const ticketData     = new Map();
 const ratedTickets   = new Set(); // evita múltiplas avaliações
+
+// ─── Dedup de interações via arquivo (resiste a rolling deploys) ──────
+import { mkdirSync, unlinkSync } from "fs";
+mkdirSync("./locks", { recursive: true });
+
+function tryLockInteraction(interactionId) {
+  const path = `./locks/i_${interactionId}.lock`;
+  try {
+    writeFileSync(path, Date.now().toString(), { flag: "wx" }); // falha se já existir
+    setTimeout(() => { try { unlinkSync(path); } catch {} }, 15_000); // auto-cleanup
+    return true;
+  } catch {
+    // Já existe — verifica se expirou (> 15s = lock zumbi)
+    try {
+      const ts = parseInt(readFileSync(path, "utf8") || "0");
+      if (Date.now() - ts > 15_000) {
+        writeFileSync(path, Date.now().toString());
+        return true;
+      }
+    } catch {}
+    return false; // outro processo já está handling
+  }
+}
 
 // ─── guildMemberAdd ───────────────────────────────────────────────────
 client.on("guildMemberAdd", async (member) => {
@@ -550,6 +575,11 @@ async function logPunishment(guild, { tipo, emoji, staffId, membroTag, membroId,
 client.on("interactionCreate", (i) => handleInteraction(i).catch(e => console.error("Erro interaction:", e)));
 
 async function handleInteraction(interaction) {
+  // Dedup global — impede que dois processos (rolling deploy) tratem o mesmo evento
+  if (!tryLockInteraction(interaction.id)) {
+    console.log(`[DEDUP] Interação ${interaction.id} já sendo tratada por outro processo.`);
+    return;
+  }
 
   // ── /setroletemp ─────────────────────────────────────────────────────
   if (interaction.isChatInputCommand() && interaction.commandName === "setroletemp") {
