@@ -47,7 +47,9 @@ const APPEAL_SERVER         = "https://discord.gg/hvQ8x9JwyB";
 
 const STAFF_ROLES = ["1449062440183664701","1449064374177104074","1454100805496868906"];
 const SERVER_ICON = "https://cdn.discordapp.com/icons/1449061779060687063/ecbd3ce76f39128b1ec08154e7faff75.png?size=2048";
-const PARCERIA_CHANNEL_ID = "1449071892873871522"; // canal de parcerias (links permitidos)
+const PARCERIA_CHANNEL_ID   = "1449071892873871522"; // canal de parcerias (links permitidos)
+const FREELINKS_CHANNEL_ID  = "1449112362912186389"; // Free Links (links + scoutings liberados)
+const LEAGUES_CHANNEL_ID    = "1449070133778714738"; // Divulgação de leagues
 
 // Cargos de advertência progressivos
 // Adv 1 → cargo + mute  | Adv 2 → cargo + mute  | Adv 3 → ban
@@ -276,7 +278,7 @@ client.on("messageCreate", async (message) => {
     if (isAdmin) return;
 
     // Canais onde qualquer membro pode mandar convite
-    const allowedChannels = [FREEAGENT_CHANNEL_ID, SCOUTING_CHANNEL_ID, PARCERIA_CHANNEL_ID];
+    const allowedChannels = [FREEAGENT_CHANNEL_ID, SCOUTING_CHANNEL_ID, PARCERIA_CHANNEL_ID, FREELINKS_CHANNEL_ID, LEAGUES_CHANNEL_ID];
     // Canais de ticket (nome começa com "ticket-")
     const isTicketChannel = message.channel.name?.startsWith("ticket-");
 
@@ -416,6 +418,9 @@ client.on("messageCreate", async (message) => {
 
   // Ignora comandos !freeagent (processados pelo listener abaixo)
   if (message.content.trim().toLowerCase().startsWith("!freeagent")) return;
+
+  // Outros canais que aceitam scoutings não precisam de filtro
+  // (esse listener já filtra só FREEAGENT_CHANNEL_ID no topo)
 
   // Ignora mensagens muito curtas (tipo "ok", "gg") — provavelmente não é scouting
   const content = message.content.trim();
@@ -595,6 +600,21 @@ async function handleInteraction(interaction) {
 
     if (!target) return interaction.reply({ content: "❌ Usuário não encontrado.", flags: MessageFlags.Ephemeral });
 
+    // Verifica se já está banido
+    const existingBan = await interaction.guild.bans.fetch(target.id).catch(() => null);
+    if (existingBan) {
+      return interaction.reply({ embeds: [new EmbedBuilder()
+        .setTitle("⚠️ Usuário Já Banido")
+        .setDescription(`**${target.tag}** já está banido do servidor!`)
+        .setColor(0xFEE75C).setTimestamp()
+      ], flags: MessageFlags.Ephemeral });
+    }
+    // Verifica se é admin/dono
+    const targetMember = await interaction.guild.members.fetch(target.id).catch(() => null);
+    if (targetMember?.permissions.has(PermissionFlagsBits.Administrator)) {
+      return interaction.reply({ content: "❌ Não é possível banir um administrador.", flags: MessageFlags.Ephemeral });
+    }
+
     // DM ao banido antes de banir
     try {
       const dm = new ContainerBuilder()
@@ -675,7 +695,19 @@ async function handleInteraction(interaction) {
 
     if (!target) return interaction.reply({ content: "❌ Membro não encontrado.", flags: MessageFlags.Ephemeral });
 
-    const until = new Date(Date.now() + minutos * 60_000);
+    if (target.communicationDisabledUntil && target.communicationDisabledUntil > new Date()) {
+      const remaining = Math.ceil((target.communicationDisabledUntil - Date.now()) / 60_000);
+      return interaction.reply({ embeds: [new EmbedBuilder()
+        .setTitle("⚠️ Membro Já Silenciado")
+        .setDescription(`<@${target.id}> **já está silenciado!**
+Tempo restante: **${remaining} minuto(s)**`)
+        .setColor(0xFEE75C).setTimestamp()
+      ], flags: MessageFlags.Ephemeral });
+    }
+    if (target.permissions.has(PermissionFlagsBits.Administrator)) {
+      return interaction.reply({ content: "❌ Não é possível silenciar um administrador.", flags: MessageFlags.Ephemeral });
+    }
+
     try {
       await target.timeout(minutos * 60_000, `${motivo} | Staff: ${interaction.user.tag}`);
     } catch (e) {
@@ -707,6 +739,14 @@ async function handleInteraction(interaction) {
     const motivo = interaction.options.getString("motivo") ?? "Sem motivo especificado";
 
     if (!target) return interaction.reply({ content: "❌ Membro não encontrado.", flags: MessageFlags.Ephemeral });
+
+    if (!target.communicationDisabledUntil || target.communicationDisabledUntil <= new Date()) {
+      return interaction.reply({ embeds: [new EmbedBuilder()
+        .setTitle("⚠️ Membro Não Silenciado")
+        .setDescription(`<@${target.id}> **não está silenciado!**`)
+        .setColor(0xFEE75C).setTimestamp()
+      ], flags: MessageFlags.Ephemeral });
+    }
 
     try {
       await target.timeout(null, `${motivo} | Staff: ${interaction.user.tag}`);
@@ -742,6 +782,13 @@ async function handleInteraction(interaction) {
     const motivo = interaction.options.getString("motivo");
 
     if (!target) return interaction.reply({ content: "❌ Membro não encontrado.", flags: MessageFlags.Ephemeral });
+
+    if (target.permissions.has(PermissionFlagsBits.Administrator)) {
+      return interaction.reply({ content: "❌ Não é possível advertir um administrador.", flags: MessageFlags.Ephemeral });
+    }
+    if (target.id === interaction.user.id) {
+      return interaction.reply({ content: "❌ Você não pode se advertir.", flags: MessageFlags.Ephemeral });
+    }
 
     // Persiste advertência
     const warns = loadWarns();
@@ -890,6 +937,13 @@ async function handleInteraction(interaction) {
 
     if (!target) return interaction.reply({ content: "❌ Membro não encontrado.", flags: MessageFlags.Ephemeral });
 
+    if (target.permissions.has(PermissionFlagsBits.Administrator)) {
+      return interaction.reply({ content: "❌ Não é possível expulsar um administrador.", flags: MessageFlags.Ephemeral });
+    }
+    if (target.id === interaction.user.id) {
+      return interaction.reply({ content: "❌ Você não pode se expulsar.", flags: MessageFlags.Ephemeral });
+    }
+
     try {
       await target.kick(`${motivo} | Staff: ${interaction.user.tag}`);
     } catch (e) {
@@ -916,6 +970,14 @@ async function handleInteraction(interaction) {
   // ── /lock ─────────────────────────────────────────────────────────────
   if (interaction.isChatInputCommand() && interaction.commandName === "lock") {
     const canal = interaction.options.getChannel("canal") ?? interaction.channel;
+    const everyoneOverwrite = canal.permissionOverwrites.cache.get(interaction.guild.roles.everyone.id);
+    if (everyoneOverwrite?.deny.has(PermissionFlagsBits.SendMessages)) {
+      return interaction.reply({ embeds: [new EmbedBuilder()
+        .setTitle("⚠️ Canal Já Travado")
+        .setDescription(`O canal <#${canal.id}> **já está travado!**`)
+        .setColor(0xFEE75C).setTimestamp()
+      ], flags: MessageFlags.Ephemeral });
+    }
     try {
       await canal.permissionOverwrites.edit(interaction.guild.roles.everyone, { SendMessages: false });
     } catch (e) {
@@ -940,6 +1002,14 @@ async function handleInteraction(interaction) {
   // ── /unlock ───────────────────────────────────────────────────────────
   if (interaction.isChatInputCommand() && interaction.commandName === "unlock") {
     const canal = interaction.options.getChannel("canal") ?? interaction.channel;
+    const everyoneOverwrite = canal.permissionOverwrites.cache.get(interaction.guild.roles.everyone.id);
+    if (!everyoneOverwrite?.deny.has(PermissionFlagsBits.SendMessages)) {
+      return interaction.reply({ embeds: [new EmbedBuilder()
+        .setTitle("⚠️ Canal Já Destravado")
+        .setDescription(`O canal <#${canal.id}> **já está destravado!**`)
+        .setColor(0xFEE75C).setTimestamp()
+      ], flags: MessageFlags.Ephemeral });
+    }
     try {
       await canal.permissionOverwrites.edit(interaction.guild.roles.everyone, { SendMessages: null });
     } catch (e) {
@@ -965,6 +1035,17 @@ async function handleInteraction(interaction) {
   if (interaction.isChatInputCommand() && interaction.commandName === "slowmode") {
     const segundos = interaction.options.getInteger("segundos");
     const canal    = interaction.options.getChannel("canal") ?? interaction.channel;
+
+    if (canal.rateLimitPerUser === segundos) {
+      const msg = segundos === 0
+        ? `O canal <#${canal.id}> **já está sem slowmode!**`
+        : `O canal <#${canal.id}> **já está com slowmode de ${segundos}s!**`;
+      return interaction.reply({ embeds: [new EmbedBuilder()
+        .setTitle("⚠️ Slowmode Já Configurado")
+        .setDescription(msg)
+        .setColor(0xFEE75C).setTimestamp()
+      ], flags: MessageFlags.Ephemeral });
+    }
 
     try {
       await canal.setRateLimitPerUser(segundos);
