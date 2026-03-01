@@ -1268,7 +1268,7 @@ async function handleInteraction(interaction) {
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🎫 Ticket Aberto`))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        `**Nome do Ticket:** \`${ticketName}\`\n**Criado Por:** <@${user.id}>\n**Opened Date:** ${dateStr}\n**Ticket Type:** ${label}`
+        `🎫 **Ticket Aberto**\n\n> 📋 **Nome do Ticket:** \`${ticketName}\`\n> 👤 **Criado Por:** <@${user.id}>\n> 📅 **Opened Date:** ${dateStr}\n> 🏷️ **Ticket Type:** ${label}`
       ))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`))
@@ -1605,7 +1605,7 @@ async function handleInteraction(interaction) {
 
     const data       = ticketData.get(ch.id);
     const ticketInfo = data
-      ? `**Nome do Ticket:** \`${data.ticketName}\`\n**Criado Por:** <@${data.openerId}>\n**Opened Date:** ${data.dateStr}\n**Ticket Type:** ${data.label}`
+      ? `🎫 **Ticket Aberto**\n\n> 📋 **Nome do Ticket:** \`${data.ticketName}\`\n> 👤 **Criado Por:** <@${data.openerId}>\n> 📅 **Opened Date:** ${data.dateStr}\n> 🏷️ **Ticket Type:** ${data.label}`
       : `**Criado Por:** <@${openerId}>`;
 
     const updated = new ContainerBuilder()
@@ -1617,7 +1617,7 @@ async function handleInteraction(interaction) {
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`))
       .addActionRowComponents(new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId(`ticket_close_${ch.id}_${openerId}`).setLabel("Fechar Ticket").setStyle(ButtonStyle.Danger).setEmoji("🔒"),
-        new ButtonBuilder().setCustomId(`claimed_by_${interaction.user.id}`).setLabel(`Atendido por ${interaction.user.displayName}`).setStyle(ButtonStyle.Secondary).setEmoji("👤").setDisabled(true)
+        new ButtonBuilder().setCustomId(`claimed_by_${interaction.user.id}`).setLabel(`Atendido por ${interaction.user.displayName}`).setStyle(ButtonStyle.Secondary).setEmoji("✅").setDisabled(true)
       ))
       .addActionRowComponents(new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId(`panel_staff_${ch.id}_${openerId}`).setLabel("Painel Staff").setStyle(ButtonStyle.Secondary).setEmoji({ id:"1436350133884293221", name:"icon_suplente_mod_1" }),
