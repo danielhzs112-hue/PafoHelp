@@ -220,6 +220,17 @@ function loadTempRoles()    { return loadJSON("./temproles.json", []); }
 function saveTempRoles(d)   { saveJSON("./temproles.json", d); }
 function loadWarns()        { return loadJSON("./warns.json", {}); }
 function saveWarns(d)       { saveJSON("./warns.json", d); }
+function loadTicketData() {
+  const raw = loadJSON("./ticketdata.json", {});
+  const map = new Map();
+  for (const [k, v] of Object.entries(raw)) map.set(k, v);
+  return map;
+}
+function saveTicketData(map) {
+  const obj = {};
+  for (const [k, v] of map.entries()) obj[k] = v;
+  saveJSON("./ticketdata.json", obj);
+}
 
 // ─── Temp Roles checker ───────────────────────────────────────────────
 async function checkTempRoles() {
@@ -260,7 +271,7 @@ const handled        = new Set();
 const cmdCooldown    = new Set();
 const ticketOpening  = new Set(); // FIX #2: guarda userId → previne ticket duplo por usuário
 const claimedTickets = new Set();
-const ticketData     = new Map();
+const ticketData     = loadTicketData();
 const ratedTickets   = new Set();
 
 // ─── FIX #3/#4/#5: Anti-Spam/Flood/Emoji/Imagem/Menção/Duplicate/Blacklist ─
@@ -1257,6 +1268,7 @@ async function handleInteraction(interaction) {
 
     const dateStr = getBRT();
     ticketData.set(ticketCh.id, { ticketName, openerId: user.id, label, dateStr, claimerId: null, ratedSent: false, isCompra });
+    saveTicketData(ticketData);
 
     interaction.editReply({ content: `✅ Ticket criado: <#${ticketCh.id}>` }).catch(() => {});
 
@@ -1544,6 +1556,7 @@ async function handleInteraction(interaction) {
     }
 
     ticketData.delete(ch.id);
+    saveTicketData(ticketData);
     setTimeout(() => {
       ch.delete().catch(() => {});
       ratedTickets.delete(ch.id);
@@ -1595,7 +1608,10 @@ async function handleInteraction(interaction) {
     await interaction.reply({ content: "✅ Você reivindicou este ticket!", flags: MessageFlags.Ephemeral });
 
     const [,, channelId, openerId] = interaction.customId.split("_");
-    if (ticketData.has(ch.id)) ticketData.get(ch.id).claimerId = interaction.user.id;
+    if (ticketData.has(ch.id)) {
+      ticketData.get(ch.id).claimerId = interaction.user.id;
+      saveTicketData(ticketData);
+    }
 
     await Promise.all([
       ...STAFF_ROLES.map(rId => ch.permissionOverwrites.edit(rId, { ViewChannel: false }).catch(() => {})),
@@ -1604,9 +1620,7 @@ async function handleInteraction(interaction) {
     ]);
 
     const data       = ticketData.get(ch.id);
-    const ticketInfo = data
-      ? `🎫 **Ticket Aberto**\n\n> 📋 **Nome do Ticket:** \`${data.ticketName}\`\n> 👤 **Criado Por:** <@${data.openerId}>\n> 📅 **Opened Date:** ${data.dateStr}\n> 🏷️ **Ticket Type:** ${data.label}`
-      : `**Criado Por:** <@${openerId}>`;
+    const ticketInfo = `🎫 **Ticket Aberto**\n\n> 📋 **Nome do Ticket:** \`${data?.ticketName ?? ch.name}\`\n> 👤 **Criado Por:** <@${data?.openerId ?? openerId}>\n> 📅 **Opened Date:** ${data?.dateStr ?? getBRT()}\n> 🏷️ **Ticket Type:** ${data?.label ?? "Desconhecido"}`;
 
     const updated = new ContainerBuilder()
       .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(BANNERS.ticket)))
