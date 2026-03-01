@@ -39,24 +39,22 @@ const FREEAGENT_CHANNEL_ID  = "1461773344620941534";
 const LOJA_CHANNEL_ID       = "1449518786825814036";
 const TICKET_CATEGORY_ID    = "";
 const GUILD_ID              = "1449061779060687063";
-const PUNITIONS_CHANNEL_ID  = "1450094761452109948"; // canal de punições-loritta
-const SCOUTING_CHANNEL_ID   = "1475890932162367529"; // canal de scoutings
-const FEEDBACK_COMPRAS_ID   = "1462499290810286254"; // canal feedback-compras
-const TICKET_LOG_CHANNEL_ID = "1449525327175880865"; // logs de ticket
+const PUNITIONS_CHANNEL_ID  = "1450094761452109948";
+const SCOUTING_CHANNEL_ID   = "1475890932162367529";
+const FEEDBACK_COMPRAS_ID   = "1462499290810286254";
+const TICKET_LOG_CHANNEL_ID = "1449525327175880865";
 const APPEAL_SERVER         = "https://discord.gg/hvQ8x9JwyB";
 
 const STAFF_ROLES = ["1449062440183664701","1449064374177104074","1454100805496868906"];
 const SERVER_ICON = "https://cdn.discordapp.com/icons/1449061779060687063/ecbd3ce76f39128b1ec08154e7faff75.png?size=2048";
-const PARCERIA_CHANNEL_ID   = "1449071892873871522"; // canal de parcerias (links permitidos)
-const FREELINKS_CHANNEL_ID  = "1449112362912186389"; // Free Links (links + scoutings liberados)
-const LEAGUES_CHANNEL_ID    = "1449070133778714738"; // Divulgação de leagues
+const PARCERIA_CHANNEL_ID   = "1449071892873871522";
+const FREELINKS_CHANNEL_ID  = "1449112362912186389";
+const LEAGUES_CHANNEL_ID    = "1449070133778714738";
 
-// Cargos de advertência progressivos
-// Adv 1 → cargo + mute  | Adv 2 → cargo + mute  | Adv 3 → ban
 const WARN_ROLES = [
-  "1453806335996203050", // Advertência 1 (Mute)
-  "1453806497409536020", // Advertência 2 (Mute)
-  "1453806627105935461", // Advertência 3 (Ban)
+  "1453806335996203050",
+  "1453806497409536020",
+  "1453806627105935461",
 ];
 
 const BANNERS = {
@@ -68,6 +66,13 @@ const BANNERS = {
   loja    : "https://cdn.discordapp.com/attachments/1469069997975535646/1474425406764351512/imagem_2026-02-20_122018758-Photoroom.png",
   ticket  : "https://cdn.discordapp.com/attachments/1469069997975535646/1474427362362916955/imagem_2026-02-20_122753297-Photoroom.png",
 };
+
+// ─── Blacklist de frases/links ─────────────────────────────────────────
+// FIX #6: Blacklist de mensagem com link malicioso
+const BLACKLIST_PATTERNS = [
+  /Yooo looook at girl in vc/i,
+  /cute-voice/i,
+];
 
 // ─── Port lock ────────────────────────────────────────────────────────
 import { createServer } from "net";
@@ -189,7 +194,6 @@ async function registerSlashCommands() {
       .addChannelOption(o => o.setName("canal").setDescription("Canal (padrão: atual)").setRequired(false))
       .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
       .toJSON(),
-
   ];
 
   try {
@@ -216,8 +220,6 @@ function loadTempRoles()    { return loadJSON("./temproles.json", []); }
 function saveTempRoles(d)   { saveJSON("./temproles.json", d); }
 function loadWarns()        { return loadJSON("./warns.json", {}); }
 function saveWarns(d)       { saveJSON("./warns.json", d); }
-
-
 
 // ─── Temp Roles checker ───────────────────────────────────────────────
 async function checkTempRoles() {
@@ -256,12 +258,121 @@ function getBRT() {
 // ─── Runtime state ────────────────────────────────────────────────────
 const handled        = new Set();
 const cmdCooldown    = new Set();
-const ticketOpening  = new Set();
+const ticketOpening  = new Set(); // FIX #2: guarda userId → previne ticket duplo por usuário
 const claimedTickets = new Set();
 const ticketData     = new Map();
-const ratedTickets   = new Set(); // evita múltiplas avaliações
+const ratedTickets   = new Set();
 
+// ─── FIX #3/#4/#5: Anti-Spam/Flood/Emoji/Imagem/Menção/Duplicate/Blacklist ─
+// Mapa: userId → { msgs: [timestamps], images: [timestamps], lastContent: string }
+const spamTracker = new Map();
 
+const EMOJI_REGEX = /(\p{Emoji_Presentation}|\p{Extended_Pictographic})/gu;
+const MAX_EMOJIS        = 10;    // máx emojis por mensagem
+const FAST_MSG_LIMIT    = 5;     // máx msgs em...
+const FAST_MSG_WINDOW   = 5000;  // ...5 segundos
+const IMAGE_LIMIT       = 3;     // máx imagens em...
+const IMAGE_WINDOW      = 10000; // ...10 segundos
+const MAX_MENTIONS      = 5;     // máx menções por mensagem
+
+function getSpam(userId) {
+  if (!spamTracker.has(userId)) spamTracker.set(userId, { msgs: [], images: [], lastContent: "" });
+  return spamTracker.get(userId);
+}
+
+async function handleAntiSpam(message) {
+  if (message.author.bot || !message.guild) return false;
+  const member = message.member;
+  if (!member) return false;
+  if (member.permissions.has(PermissionFlagsBits.Administrator) || isStaff(member)) return false;
+
+  const now     = Date.now();
+  const content = message.content ?? "";
+  const userId  = message.author.id;
+  const data    = getSpam(userId);
+  const logCh   = message.guild.channels.cache.get(LOG_CHANNEL_ID);
+
+  async function punish(reason, emoji) {
+    await message.delete().catch(() => {});
+    // Mute 5 minutos
+    await member.timeout(5 * 60_000, reason).catch(() => {});
+    const w = await message.channel.send({
+      content: `<@${userId}> 🚫 **${reason}** — você foi silenciado por **5 minutos**.`
+    }).catch(() => null);
+    if (w) setTimeout(() => w.delete().catch(() => {}), 8000);
+
+    logCh?.send({ embeds: [new EmbedBuilder()
+      .setTitle(`${emoji} AutoMod — ${reason}`)
+      .addFields(
+        { name: "Usuário", value: `<@${userId}>`, inline: true },
+        { name: "Canal",   value: `<#${message.channel.id}>`, inline: true },
+        { name: "Conteúdo", value: content.slice(0, 500) || "[sem texto]", inline: false },
+      )
+      .setColor(0xFEE75C).setFooter({ text: "PAFO — AutoMod", iconURL: SERVER_ICON }).setTimestamp()
+    ]}).catch(() => {});
+    return true;
+  }
+
+  // 1. Blacklist
+  for (const pattern of BLACKLIST_PATTERNS) {
+    if (pattern.test(content)) {
+      await message.delete().catch(() => {});
+      await member.timeout(10 * 60_000, "Mensagem na blacklist").catch(() => {});
+      logCh?.send({ embeds: [new EmbedBuilder()
+        .setTitle("🚫 AutoMod — Blacklist")
+        .addFields(
+          { name: "Usuário", value: `<@${userId}>`, inline: true },
+          { name: "Canal",   value: `<#${message.channel.id}>`, inline: true },
+          { name: "Conteúdo", value: content.slice(0, 500), inline: false },
+        )
+        .setColor(0xED4245).setFooter({ text: "PAFO — AutoMod", iconURL: SERVER_ICON }).setTimestamp()
+      ]}).catch(() => {});
+      const w = await message.channel.send({
+        content: `<@${userId}> 🚫 Sua mensagem foi removida por conter conteúdo proibido.`
+      }).catch(() => null);
+      if (w) setTimeout(() => w.delete().catch(() => {}), 8000);
+      return true;
+    }
+  }
+
+  // 2. Mass Mentions
+  const mentionCount = (message.mentions.users.size + message.mentions.roles.size);
+  if (mentionCount >= MAX_MENTIONS) {
+    return punish(`Mass Mentions detectado (${mentionCount} menções)`, "📣");
+  }
+
+  // 3. Emoji Spam
+  const emojiMatches = content.match(EMOJI_REGEX);
+  if (emojiMatches && emojiMatches.length > MAX_EMOJIS) {
+    return punish(`Emoji Spam detectado (${emojiMatches.length} emojis)`, "😵");
+  }
+
+  // 4. Duplicate Text
+  if (content.length > 5 && content === data.lastContent) {
+    return punish("Texto duplicado detectado", "🔁");
+  }
+  data.lastContent = content;
+
+  // 5. Fast Message Spam (5 msgs em 5s)
+  data.msgs.push(now);
+  data.msgs = data.msgs.filter(t => now - t < FAST_MSG_WINDOW);
+  if (data.msgs.length >= FAST_MSG_LIMIT) {
+    data.msgs = [];
+    return punish("Fast Message Spam detectado", "⚡");
+  }
+
+  // 6. Image Spam (3 imagens em 10s)
+  if (message.attachments.size > 0) {
+    data.images.push(now);
+    data.images = data.images.filter(t => now - t < IMAGE_WINDOW);
+    if (data.images.length >= IMAGE_LIMIT) {
+      data.images = [];
+      return punish("Image Spam detectado", "🖼️");
+    }
+  }
+
+  return false;
+}
 
 // ─── guildMemberAdd ───────────────────────────────────────────────────
 client.on("guildMemberAdd", async (member) => {
@@ -269,21 +380,23 @@ client.on("guildMemberAdd", async (member) => {
   if (ch) await sendWelcome(ch, member);
 });
 
-// ─── messageCreate — bloqueio de convites ─────────────────────────────
+// ─── messageCreate — anti-spam + bloqueio de convites ─────────────────
+// FIX #1: ÚNICO listener para messageCreate geral (evita logs duplicados)
 client.on("messageCreate", async (message) => {
   if (message.author.bot || !message.guild) return;
+
+  // Anti-spam (roda antes de tudo)
+  const blocked = await handleAntiSpam(message);
+  if (blocked) return;
 
   // Bloqueia convites Discord em canais não autorizados
   const inviteRegex = /discord(?:\.gg|app\.com\/invite|\.com\/invite)\/[a-zA-Z0-9]+/i;
   const member = message.member;
   if (inviteRegex.test(message.content) && member) {
-    // ADM sempre pode mandar link
     const isAdmin = member.permissions.has(PermissionFlagsBits.Administrator);
     if (isAdmin) return;
 
-    // Canais onde qualquer membro pode mandar convite
     const allowedChannels = [FREEAGENT_CHANNEL_ID, SCOUTING_CHANNEL_ID, PARCERIA_CHANNEL_ID, FREELINKS_CHANNEL_ID, LEAGUES_CHANNEL_ID];
-    // Canais de ticket (nome começa com "ticket-")
     const isTicketChannel = message.channel.name?.startsWith("ticket-");
 
     if (!allowedChannels.includes(message.channel.id) && !isTicketChannel) {
@@ -300,7 +413,6 @@ client.on("messageCreate", async (message) => {
         await message.author.send({ components: [dmMsg], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
       } catch {}
 
-      // Log da mensagem deletada
       const logCh = message.guild.channels.cache.get(LOG_CHANNEL_ID);
       if (logCh) {
         const logMsg = new ContainerBuilder()
@@ -317,43 +429,87 @@ client.on("messageCreate", async (message) => {
     }
   }
 
-});
+  // Filtro free-agents (IA)
+  if (message.channel.id === FREEAGENT_CHANNEL_ID && !member?.permissions.has(PermissionFlagsBits.Administrator) && !isStaff(member)) {
+    if (!message.content.trim().toLowerCase().startsWith("!freeagent")) {
+      const content = message.content.trim();
+      if (content.length >= 3) {
+        const tipo = await classifyFreeAgentMessage(content);
+        if (tipo === "TIME") {
+          await message.delete().catch(() => {});
+          const w = await message.channel.send({
+            content: `<@${message.author.id}> ❌ Divulgações de **times/vagas** não são permitidas aqui! Este canal é para **jogadores se anunciarem** como free agents.\n> 👉 Use o canal <#${SCOUTING_CHANNEL_ID}> para divulgar seu time.`
+          }).catch(() => null);
+          if (w) setTimeout(() => w.delete().catch(() => {}), 10_000);
+          const logCh = message.guild.channels.cache.get(LOG_CHANNEL_ID);
+          logCh?.send({ embeds: [new EmbedBuilder()
+            .setTitle("🚫 Scouting bloqueado no free-agents")
+            .addFields(
+              { name: "Usuário", value: `<@${message.author.id}>`, inline: true },
+              { name: "Conteúdo", value: content.slice(0, 500), inline: false },
+            )
+            .setColor(0xED4245).setFooter({ text: "PAFO — IA Filter", iconURL: SERVER_ICON }).setTimestamp()
+          ]}).catch(() => {});
+          return;
+        }
+      }
+    }
+  }
 
-// ─── messageDelete — log tipo Loritta ─────────────────────────────────
-client.on("messageDelete", async (message) => {
-  if (!message.guild || message.author?.bot) return;
+  // !freeagent
+  if (message.content.trim().toLowerCase().startsWith("!freeagent")) {
+    if (!member) return;
+    const cdKey = `fa_${member.id}`;
+    if (cmdCooldown.has(cdKey)) {
+      const w = await message.reply({ content: "⏳ Aguarde antes de postar outro anúncio." }).catch(() => null);
+      setTimeout(() => w?.delete().catch(() => {}), 5000);
+      return;
+    }
+    const raw  = message.content.trim().slice("!freeagent".length).trim();
+    const args = raw.split(",").map(s => s.trim());
+    if (args.length < 5 || args.some(a => !a)) {
+      const w = await message.reply({
+        content: "❌ **Uso correto:**\n`!freeagent <experiências>, <habilidades>, <posição>, <dispositivo>, <observações>`\n\n**Exemplo:**\n`!freeagent 5 anos de mps, incrivel, st cdm cm, PC, bom p krl!`"
+      }).catch(() => null);
+      setTimeout(() => w?.delete().catch(() => {}), 10_000);
+      return;
+    }
+    const [experiencias, habilidades, posicao, dispositivo, observacoes] = args;
+    cmdCooldown.add(cdKey);
+    setTimeout(() => cmdCooldown.delete(cdKey), 30_000);
+    await message.delete().catch(() => {});
+    const faCh = message.guild.channels.cache.get(FREEAGENT_CHANNEL_ID);
+    if (!faCh) return;
+    const buildFa = (msgId) => new ContainerBuilder()
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🎮 Free Agent Disponível`))
+      .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`🧑 ***JOGADOR***\n→ <@${member.id}>`))
+      .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`⭐ ***EXPERIÊNCIAS***\n→ ${experiencias}`))
+      .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`⚡ ***HABILIDADES***\n→ ${habilidades}`))
+      .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`🎯 ***POSIÇÃO***\n→ ${posicao}`))
+      .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`📱 ***DISPOSITIVO***\n→ ${dispositivo}`))
+      .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`📝 ***OBSERVAÇÕES***\n→ ${observacoes}`))
+      .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Free Agent`))
+      .addActionRowComponents(new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`fac_${member.id}_${msgId}`).setLabel("Contratar").setStyle(ButtonStyle.Success).setEmoji("🤝"),
+        new ButtonBuilder().setCustomId(`fas_${member.id}_${msgId}`).setLabel("Saber Mais").setStyle(ButtonStyle.Secondary).setEmoji("📋")
+      ));
+    const sent = await faCh.send({ components: [buildFa("00000000000000000")], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
+    if (sent) await sent.edit({ components: [buildFa(sent.id)], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
+    return;
+  }
 
-  const logCh = message.guild.channels.cache.get(LOG_CHANNEL_ID);
-  if (!logCh) return;
-
-  // Não loga mensagens sem conteúdo relevante
-  if (!message.content && message.attachments.size === 0) return;
-
-  const authorTag  = message.author?.tag ?? "Desconhecido";
-  const authorId   = message.author?.id  ?? "?";
-  const channelId  = message.channel?.id ?? "?";
-  const content    = message.content ? message.content.slice(0, 1000) : "[sem texto]";
-
-  const logMsg = new ContainerBuilder()
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `### 📝 Mensagem de texto deletada\n` +
-      `**Usuário:** <@${authorId}> (\`${authorTag}\`)\n` +
-      `**Canal:** <#${channelId}>\n\n` +
-      `**Mensagem:**\n\`\`\`\n${content}\n\`\`\`\n` +
-      `-# ID do usuário: ${authorId} • ${getBRT()}`
-    ));
-
-  await logCh.send({ components: [logMsg], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
-});
-
-// ─── Text commands (admin only) ───────────────────────────────────────
-client.on("messageCreate", async (message) => {
-  if (message.author.bot || !message.guild) return;
+  // Text commands (admin only)
   if (handled.has(message.id)) return;
   handled.add(message.id);
   setTimeout(() => handled.delete(message.id), 10_000);
 
-  const member = message.member;
   if (!member?.permissions.has(PermissionFlagsBits.Administrator)) return;
 
   const content = message.content.trim().toLowerCase();
@@ -387,9 +543,31 @@ client.on("messageCreate", async (message) => {
   return map[content]?.();
 });
 
-// ─── Bloqueio de scouting no canal free-agents (via IA) ─────────────────
-const faClassifyCache = new Map(); // evita classificar a mesma msg 2x
+// ─── messageDelete — log tipo Loritta ─────────────────────────────────
+// FIX #1: listener separado para messageDelete, sem duplicação
+client.on("messageDelete", async (message) => {
+  if (!message.guild || message.author?.bot) return;
+  const logCh = message.guild.channels.cache.get(LOG_CHANNEL_ID);
+  if (!logCh) return;
+  if (!message.content && message.attachments.size === 0) return;
 
+  const authorTag = message.author?.tag ?? "Desconhecido";
+  const authorId  = message.author?.id  ?? "?";
+  const channelId = message.channel?.id ?? "?";
+  const content   = message.content ? message.content.slice(0, 1000) : "[sem texto]";
+
+  const logMsg = new ContainerBuilder()
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `### 📝 Mensagem de texto deletada\n` +
+      `**Usuário:** <@${authorId}> (\`${authorTag}\`)\n` +
+      `**Canal:** <#${channelId}>\n\n` +
+      `**Mensagem:**\n\`\`\`\n${content}\n\`\`\`\n` +
+      `-# ID do usuário: ${authorId} • ${getBRT()}`
+    ));
+  await logCh.send({ components: [logMsg], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+});
+
+// ─── Bloqueio de scouting no canal free-agents (via IA) ─────────────────
 async function classifyFreeAgentMessage(content) {
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -406,110 +584,9 @@ async function classifyFreeAgentMessage(content) {
     const result = data.content?.[0]?.text?.trim().toUpperCase() ?? "JOGADOR";
     return result.includes("TIME") ? "TIME" : "JOGADOR";
   } catch {
-    return "JOGADOR"; // em caso de erro, não bloqueia
+    return "JOGADOR";
   }
 }
-
-client.on("messageCreate", async (message) => {
-  if (message.author.bot || !message.guild) return;
-  if (message.channel.id !== FREEAGENT_CHANNEL_ID) return;
-
-  const member = message.member;
-  if (!member) return;
-
-  // Admins e staff liberados
-  if (member.permissions.has(PermissionFlagsBits.Administrator) || isStaff(member)) return;
-
-  // Ignora comandos !freeagent (processados pelo listener abaixo)
-  if (message.content.trim().toLowerCase().startsWith("!freeagent")) return;
-
-  // Outros canais que aceitam scoutings não precisam de filtro
-  // (esse listener já filtra só FREEAGENT_CHANNEL_ID no topo)
-
-  // Ignora mensagens muito curtas (tipo "ok", "gg") — provavelmente não é scouting
-  const content = message.content.trim();
-  if (content.length < 3) return;
-
-  // Classifica com IA
-  const tipo = await classifyFreeAgentMessage(content);
-
-  if (tipo === "TIME") {
-    await message.delete().catch(() => {});
-    const w = await message.channel.send({
-      content: `<@${message.author.id}> ❌ Divulgações de **times/vagas** não são permitidas aqui! Este canal é para **jogadores se anunciarem** como free agents.\n> 👉 Use o canal <#${SCOUTING_CHANNEL_ID}> para divulgar seu time.`
-    }).catch(() => null);
-    if (w) setTimeout(() => w.delete().catch(() => {}), 10_000);
-
-    // Log
-    const logCh = message.guild.channels.cache.get(LOG_CHANNEL_ID);
-    logCh?.send({ embeds: [new EmbedBuilder()
-      .setTitle("🚫 Scouting bloqueado no free-agents")
-      .addFields(
-        { name: "Usuário", value: `<@${message.author.id}>`, inline: true },
-        { name: "Conteúdo", value: content.slice(0, 500), inline: false },
-      )
-      .setColor(0xED4245).setFooter({ text: "PAFO — IA Filter", iconURL: SERVER_ICON }).setTimestamp()
-    ]}).catch(() => {});
-  }
-});
-
-// ─── !freeagent ───────────────────────────────────────────────────────
-client.on("messageCreate", async (message) => {
-  if (message.author.bot || !message.guild) return;
-  if (!message.content.trim().toLowerCase().startsWith("!freeagent")) return;
-
-  const member = message.member;
-  if (!member) return;
-
-  const cdKey = `fa_${member.id}`;
-  if (cmdCooldown.has(cdKey)) {
-    const w = await message.reply({ content: "⏳ Aguarde antes de postar outro anúncio." }).catch(() => null);
-    setTimeout(() => w?.delete().catch(() => {}), 5000);
-    return;
-  }
-
-  const raw  = message.content.trim().slice("!freeagent".length).trim();
-  const args = raw.split(",").map(s => s.trim());
-  if (args.length < 5 || args.some(a => !a)) {
-    const w = await message.reply({
-      content: "❌ **Uso correto:**\n`!freeagent <experiências>, <habilidades>, <posição>, <dispositivo>, <observações>`\n\n**Exemplo:**\n`!freeagent 5 anos de mps, incrivel, st cdm cm, PC, bom p krl!`"
-    }).catch(() => null);
-    setTimeout(() => w?.delete().catch(() => {}), 10_000);
-    return;
-  }
-
-  const [experiencias, habilidades, posicao, dispositivo, observacoes] = args;
-  cmdCooldown.add(cdKey);
-  setTimeout(() => cmdCooldown.delete(cdKey), 30_000);
-  await message.delete().catch(() => {});
-
-  const faCh = message.guild.channels.cache.get(FREEAGENT_CHANNEL_ID);
-  if (!faCh) return;
-
-  const buildFa = (msgId) => new ContainerBuilder()
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🎮 Free Agent Disponível`))
-    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`🧑 ***JOGADOR***\n→ <@${member.id}>`))
-    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`⭐ ***EXPERIÊNCIAS***\n→ ${experiencias}`))
-    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`⚡ ***HABILIDADES***\n→ ${habilidades}`))
-    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`🎯 ***POSIÇÃO***\n→ ${posicao}`))
-    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`📱 ***DISPOSITIVO***\n→ ${dispositivo}`))
-    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`📝 ***OBSERVAÇÕES***\n→ ${observacoes}`))
-    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Free Agent`))
-    .addActionRowComponents(new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(`fac_${member.id}_${msgId}`).setLabel("Contratar").setStyle(ButtonStyle.Success).setEmoji("🤝"),
-      new ButtonBuilder().setCustomId(`fas_${member.id}_${msgId}`).setLabel("Saber Mais").setStyle(ButtonStyle.Secondary).setEmoji("📋")
-    ));
-
-  const sent = await faCh.send({ components: [buildFa("00000000000000000")], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
-  if (sent) await sent.edit({ components: [buildFa(sent.id)], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
-});
 
 // ─── Staff check ──────────────────────────────────────────────────────
 function isStaff(member) {
@@ -540,10 +617,8 @@ async function logPunishment(guild, { tipo, emoji, staffId, membroTag, membroId,
     tipo.includes("Advertência")  ? 0xFF6B35 : 0x5865F2
   ).setTimestamp();
 
-  // Tenta pegar o avatar do membro
   try {
-    const guild2 = guild;
-    const member = await guild2.members.fetch(membroId).catch(() => null);
+    const member = await guild.members.fetch(membroId).catch(() => null);
     if (member) embed.setThumbnail(member.user.displayAvatarURL({ size: 128 }));
   } catch {}
 
@@ -552,7 +627,6 @@ async function logPunishment(guild, { tipo, emoji, staffId, membroTag, membroId,
 
 // ─── Interactions ─────────────────────────────────────────────────────
 client.on("interactionCreate", (i) => handleInteraction(i).catch(e => {
-  // "Unknown interaction" = outro processo já respondeu (rolling deploy normal)
   if (e?.code === 10062 || e?.message?.includes("Unknown interaction")) return;
   console.error("Erro interaction:", e);
 }));
@@ -607,7 +681,6 @@ async function handleInteraction(interaction) {
 
     if (!target) return interaction.reply({ content: "❌ Usuário não encontrado.", flags: MessageFlags.Ephemeral });
 
-    // Verifica se já está banido
     const existingBan = await interaction.guild.bans.fetch(target.id).catch(() => null);
     if (existingBan) {
       return interaction.reply({ embeds: [new EmbedBuilder()
@@ -616,13 +689,11 @@ async function handleInteraction(interaction) {
         .setColor(0xFEE75C).setTimestamp()
       ], flags: MessageFlags.Ephemeral });
     }
-    // Verifica se é admin/dono
     const targetMember = await interaction.guild.members.fetch(target.id).catch(() => null);
     if (targetMember?.permissions.has(PermissionFlagsBits.Administrator)) {
       return interaction.reply({ content: "❌ Não é possível banir um administrador.", flags: MessageFlags.Ephemeral });
     }
 
-    // DM ao banido antes de banir
     try {
       const dm = new ContainerBuilder()
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(
@@ -706,8 +777,7 @@ async function handleInteraction(interaction) {
       const remaining = Math.ceil((target.communicationDisabledUntil - Date.now()) / 60_000);
       return interaction.reply({ embeds: [new EmbedBuilder()
         .setTitle("⚠️ Membro Já Silenciado")
-        .setDescription(`<@${target.id}> **já está silenciado!**
-Tempo restante: **${remaining} minuto(s)**`)
+        .setDescription(`<@${target.id}> **já está silenciado!**\nTempo restante: **${remaining} minuto(s)**`)
         .setColor(0xFEE75C).setTimestamp()
       ], flags: MessageFlags.Ephemeral });
     }
@@ -797,18 +867,15 @@ Tempo restante: **${remaining} minuto(s)**`)
       return interaction.reply({ content: "❌ Você não pode se advertir.", flags: MessageFlags.Ephemeral });
     }
 
-    // Persiste advertência
     const warns = loadWarns();
     if (!warns[target.id]) warns[target.id] = [];
     warns[target.id].push({ motivo, staffId: interaction.user.id, data: getBRT() });
     saveWarns(warns);
     const warnCount = warns[target.id].length;
 
-    // Advertência 3 = BAN
     if (warnCount >= 3) {
       const banRole = interaction.guild.roles.cache.get(WARN_ROLES[2]);
       if (banRole) await target.roles.add(banRole).catch(() => {});
-      // DM antes de banir
       try {
         const dm = new ContainerBuilder()
           .addTextDisplayComponents(new TextDisplayBuilder().setContent(
@@ -838,20 +905,15 @@ Tempo restante: **${remaining} minuto(s)**`)
       return;
     }
 
-    // Adv 1 ou Adv 2 = cargo + mute
     const warnRoleId = WARN_ROLES[warnCount - 1];
     const warnRole = interaction.guild.roles.cache.get(warnRoleId);
-    // Remove cargo da advertência anterior se existir
     if (warnCount > 1) {
       const prevRole = interaction.guild.roles.cache.get(WARN_ROLES[warnCount - 2]);
       if (prevRole) await target.roles.remove(prevRole).catch(() => {});
     }
     if (warnRole) await target.roles.add(warnRole).catch(() => {});
-
-    // Mute de 1 hora
     await target.timeout(3_600_000, `Advertência ${warnCount}: ${motivo} | Staff: ${interaction.user.tag}`).catch(() => {});
 
-    // DM ao membro
     try {
       const dm = new ContainerBuilder()
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(
@@ -898,15 +960,13 @@ Tempo restante: **${remaining} minuto(s)**`)
       return interaction.reply({ content: "❌ Este membro não possui advertências.", flags: MessageFlags.Ephemeral });
 
     const prevCount = warns[target.id].length;
-    warns[target.id].pop(); // remove a última
+    warns[target.id].pop();
     const newCount = warns[target.id].length;
     if (newCount === 0) delete warns[target.id];
-    // Remove cargo da advertência anterior
     if (prevCount >= 1 && prevCount <= 3) {
       const oldRole = interaction.guild.roles.cache.get(WARN_ROLES[prevCount - 1]);
       if (oldRole) await target.roles.remove(oldRole).catch(() => {});
     }
-    // Devolve cargo da nova contagem (se ainda tiver warns)
     if (newCount >= 1 && newCount <= 2) {
       const newRole = interaction.guild.roles.cache.get(WARN_ROLES[newCount - 1]);
       if (newRole) await target.roles.add(newRole).catch(() => {});
@@ -943,7 +1003,6 @@ Tempo restante: **${remaining} minuto(s)**`)
     const motivo = interaction.options.getString("motivo") ?? "Sem motivo especificado";
 
     if (!target) return interaction.reply({ content: "❌ Membro não encontrado.", flags: MessageFlags.Ephemeral });
-
     if (target.permissions.has(PermissionFlagsBits.Administrator)) {
       return interaction.reply({ content: "❌ Não é possível expulsar um administrador.", flags: MessageFlags.Ephemeral });
     }
@@ -1143,6 +1202,7 @@ Tempo restante: **${remaining} minuto(s)**`)
     return interaction.reply({ content: "❌ Cancelado.", flags: MessageFlags.Ephemeral });
 
   // ── Confirmar ticket ──────────────────────────────────────────────────
+  // FIX #2: Lock por userId para evitar numeração dupla
   if (interaction.isButton() && interaction.customId.startsWith("ticket_confirm_")) {
     const tipo   = interaction.customId.replace("ticket_confirm_", "");
     const labels = { duvidas:"Dúvidas", parcerias:"Parcerias", compras:"Compras", denuncias:"Denúncias", outros:"Outros" };
@@ -1151,16 +1211,18 @@ Tempo restante: **${remaining} minuto(s)**`)
     const guild  = interaction.guild;
     const user   = interaction.user;
 
+    // FIX #2: Verifica se já existe ticket sendo aberto por este usuário
     if (ticketOpening.has(user.id))
       return interaction.reply({ content: "⏳ Já existe um ticket sendo criado. Aguarde.", flags: MessageFlags.Ephemeral });
+
     ticketOpening.add(user.id);
 
-    // Faz o defer IMEDIATAMENTE para "reclamar" a interação antes que outro processo responda
-    // Discord só aceita UMA resposta — o segundo processo vai receber erro 10062 (silenciado)
+    // Defer imediato para evitar timeout (e prevenir resposta dupla de outra instância)
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
+    // FIX #2: Lock para garantir atomicidade na criação do canal
     const num  = loadTicketCount() + 1;
-    saveTicketCount(num);
+    saveTicketCount(num); // salva ANTES de criar canal, evita corrida
     const ticketName = `ticket-${String(num).padStart(4, "0")}`;
 
     const overw = [
@@ -1214,9 +1276,9 @@ Tempo restante: **${remaining} minuto(s)**`)
 
     await ticketCh.send({ components: [c], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
 
-    // Log de abertura
-    const logCh = guild.channels.cache.get(isCompra ? TICKET_LOG_CHANNEL_ID : LOG_CHANNEL_ID);
-    logCh?.send({ embeds: [new EmbedBuilder()
+    // FIX #1: Log apenas no canal correto, sem duplicar
+    const logTargetId = isCompra ? TICKET_LOG_CHANNEL_ID : LOG_CHANNEL_ID;
+    guild.channels.cache.get(logTargetId)?.send({ embeds: [new EmbedBuilder()
       .setTitle("🎫 Ticket Aberto")
       .addFields(
         { name: "Canal",      value: `<#${ticketCh.id}>`, inline: true },
@@ -1382,7 +1444,6 @@ Tempo restante: **${remaining} minuto(s)**`)
     const data     = ticketData.get(ch.id);
     const isCompra = data?.isCompra ?? false;
 
-    // Evita múltiplos fechamentos simultâneos
     if (ratedTickets.has(ch.id))
       return interaction.reply({ content: "⚠️ Este ticket já está sendo fechado.", flags: MessageFlags.Ephemeral });
     ratedTickets.add(ch.id);
@@ -1398,6 +1459,7 @@ Tempo restante: **${remaining} minuto(s)**`)
     await ch.send({ components: [closing], flags: MessageFlags.IsComponentsV2 });
 
     const ticketName = data?.ticketName ?? ch.name;
+    const ticketLabel = data?.label ?? "Desconhecido";
     const claimerId  = data?.claimerId  ?? null;
     const dateStr    = getBRT();
 
@@ -1412,16 +1474,16 @@ Tempo restante: **${remaining} minuto(s)**`)
     } catch { txt += "\n⚠️ Erro ao carregar histórico."; }
     const file = new AttachmentBuilder(Buffer.from(txt, "utf-8"), { name: `transcript-${ch.name}.txt` });
 
-    // Log no canal correto (compras → feedback-compras, outros → log geral)
-    const logTargetId = isCompra ? FEEDBACK_COMPRAS_ID : LOG_CHANNEL_ID;
-    interaction.guild.channels.cache.get(logTargetId)?.send({
+    // FIX #1/#7: Log de fechamento — transcript sempre vai pro LOG_CHANNEL_ID
+    // Para compras, transcript também vai pro FEEDBACK_COMPRAS_ID mais adiante via DM de avaliação
+    interaction.guild.channels.cache.get(LOG_CHANNEL_ID)?.send({
       embeds: [new EmbedBuilder()
         .setTitle("🔒 Ticket Fechado")
         .addFields(
           { name: "Canal",      value: ch.name,                                          inline: true },
           { name: "Fechado por",value: `<@${interaction.user.id}>`,                      inline: true },
           { name: "Criado por", value: openerId ? `<@${openerId}>` : "Desconhecido",     inline: true },
-          { name: "Tipo",       value: data?.label ?? "Desconhecido",                    inline: true },
+          { name: "Tipo",       value: ticketLabel,                                       inline: true },
           { name: "Data",       value: dateStr,                                           inline: true },
         )
         .setColor(0xED4245).setFooter({ text: "PAFO — Ticket System", iconURL: SERVER_ICON }).setTimestamp()
@@ -1429,38 +1491,88 @@ Tempo restante: **${remaining} minuto(s)**`)
       files: [file]
     });
 
-    // DM de avaliação — apenas 1 vez por ticket (controlado por ratedTickets + ratedSent no data)
+    // FIX #7: DM de avaliação — fluxo unificado para todos os tipos de ticket
     if (openerId && !(data?.ratedSent)) {
       if (data) data.ratedSent = true;
       const opener = await interaction.guild.members.fetch(openerId).catch(() => null);
       if (opener) {
-        const dmC = new ContainerBuilder()
-          .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(BANNERS.ticket)))
-          .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🔒 Seu Ticket Foi Encerrado`))
-          .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
-          .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-            `**Ticket:** \`${ticketName}\`\n**Fechado por:** <@${interaction.user.id}>\n**Data:** ${dateStr}`
-          ))
-          .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
-          .addTextDisplayComponents(new TextDisplayBuilder().setContent(`⭐ **Como foi o nosso atendimento?**\nAvalie clicando em uma das opções abaixo:`))
-          .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
-          .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`))
-          .addActionRowComponents(new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId(`rate_${ticketName}_${openerId}_${claimerId ?? interaction.user.id}_1`).setLabel("⭐ 1").setStyle(ButtonStyle.Danger),
-            new ButtonBuilder().setCustomId(`rate_${ticketName}_${openerId}_${claimerId ?? interaction.user.id}_2`).setLabel("⭐ 2").setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder().setCustomId(`rate_${ticketName}_${openerId}_${claimerId ?? interaction.user.id}_3`).setLabel("⭐ 3").setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder().setCustomId(`rate_${ticketName}_${openerId}_${claimerId ?? interaction.user.id}_4`).setLabel("⭐ 4").setStyle(ButtonStyle.Success),
-            new ButtonBuilder().setCustomId(`rate_${ticketName}_${openerId}_${claimerId ?? interaction.user.id}_5`).setLabel("⭐ 5").setStyle(ButtonStyle.Success)
-          ));
-        await opener.send({ components: [dmC], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+        // Para tickets de compra: pede qual cargo foi comprado antes das estrelas
+        if (isCompra) {
+          // FIX #7: DM de avaliação de compra com seleção de cargo + estrelas
+          const cargoSelect = new StringSelectMenuBuilder()
+            .setCustomId(`compra_cargo_${ticketName}_${openerId}_${claimerId ?? interaction.user.id}`)
+            .setPlaceholder("Qual cargo você comprou?")
+            .addOptions(
+              new StringSelectMenuOptionBuilder().setLabel("Olheiro").setValue("olheiro").setEmoji("🔍"),
+              new StringSelectMenuOptionBuilder().setLabel("Scrim Hoster").setValue("scrim_hoster").setEmoji("⚔️"),
+              new StringSelectMenuOptionBuilder().setLabel("Pic Perm").setValue("pic_perm").setEmoji("📸"),
+              new StringSelectMenuOptionBuilder().setLabel("Canal Personalizado").setValue("canal_personalizado").setEmoji("🛠️"),
+            );
+
+          const dmC = new ContainerBuilder()
+            .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(BANNERS.ticket)))
+            .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🛒 Seu Ticket de Compra Foi Encerrado`))
+            .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+            .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+              `**Ticket:** \`${ticketName}\`\n**Fechado por:** <@${interaction.user.id}>\n**Data:** ${dateStr}`
+            ))
+            .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+            .addTextDisplayComponents(new TextDisplayBuilder().setContent(`🛒 **Qual cargo você comprou?**\nSelecione abaixo para continuar a avaliação:`))
+            .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`))
+            .addActionRowComponents(new ActionRowBuilder().addComponents(cargoSelect));
+
+          await opener.send({ components: [dmC], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+        } else {
+          // Ticket normal: vai direto para estrelas
+          const dmC = buildRatingDM({
+            ticketName, openerId,
+            claimerId: claimerId ?? interaction.user.id,
+            closerId: interaction.user.id,
+            dateStr,
+            ticketType: ticketLabel,
+            cargoBought: null,
+          });
+          await opener.send({ components: [dmC], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+        }
       }
     }
 
     ticketData.delete(ch.id);
     setTimeout(() => {
       ch.delete().catch(() => {});
-      ratedTickets.delete(ch.id); // limpa depois de deletar
+      ratedTickets.delete(ch.id);
     }, 5000);
+    return;
+  }
+
+  // ── FIX #7: Seleção de cargo comprado (compras) ───────────────────────
+  if (interaction.isStringSelectMenu() && interaction.customId.startsWith("compra_cargo_")) {
+    const parts = interaction.customId.split("_");
+    // compra_cargo_TICKETNAME_OPENERID_CLAIMERID
+    // split by _ pode ter underscores no ticketname (ticket-0001), então:
+    const openerId  = parts[parts.length - 2];
+    const claimerId = parts[parts.length - 1];
+    const ticketName = parts.slice(2, parts.length - 2).join("_");
+
+    const cargoLabel = {
+      olheiro:           "Olheiro",
+      scrim_hoster:      "Scrim Hoster",
+      pic_perm:          "Pic Perm",
+      canal_personalizado: "Canal Personalizado",
+    };
+    const cargoBought = cargoLabel[interaction.values[0]] ?? interaction.values[0];
+
+    await interaction.deferUpdate();
+
+    const dateStr = getBRT();
+    const dmC = buildRatingDM({
+      ticketName, openerId, claimerId,
+      closerId: claimerId,
+      dateStr,
+      ticketType: "Compras",
+      cargoBought,
+    });
+    await interaction.message.edit({ components: [dmC], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
     return;
   }
 
@@ -1590,13 +1702,15 @@ Tempo restante: **${remaining} minuto(s)**`)
     return interaction.reply({ components: [profile], flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 });
   }
 
-  // ── Avaliação (DM) ────────────────────────────────────────────────────
+  // ── FIX #7: Avaliação unificada (estrelas) — funciona para ticket normal e compras ────
   if (interaction.isButton() && interaction.customId.startsWith("rate_")) {
     const parts      = interaction.customId.split("_");
     const nota       = parseInt(parts[parts.length - 1]);
     const claimerId  = parts[parts.length - 2];
     const openerId   = parts[parts.length - 3];
-    const ticketName = parts.slice(1, parts.length - 3).join("_");
+    const cargoBought = parts[parts.length - 4] !== "null" ? parts[parts.length - 4] : null;
+    const ticketType  = parts[parts.length - 5] !== "null" ? decodeURIComponent(parts[parts.length - 5]) : "Desconhecido";
+    const ticketName  = parts.slice(1, parts.length - 5).join("_");
 
     await interaction.deferUpdate();
 
@@ -1614,15 +1728,27 @@ Tempo restante: **${remaining} minuto(s)**`)
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`));
     await interaction.message.edit({ components: [confirmed], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
 
-    const guild   = await client.guilds.fetch(GUILD_ID).catch(() => null);
-    const revCh   = guild ? await guild.channels.fetch(REVIEW_CHANNEL_ID).catch(() => null) : null;
+    const guild = await client.guilds.fetch(GUILD_ID).catch(() => null);
+
+    // FIX #7: Avaliação de compra → FEEDBACK_COMPRAS_ID | Outros → REVIEW_CHANNEL_ID
+    const targetChannelId = ticketType === "Compras" ? FEEDBACK_COMPRAS_ID : REVIEW_CHANNEL_ID;
+    const revCh = guild ? await guild.channels.fetch(targetChannelId).catch(() => null) : null;
+
     if (revCh) {
       const rev = new ContainerBuilder()
         .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(BANNERS.ticket)))
-        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## ⭐ Nova Avaliação de Atendimento`))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+          ticketType === "Compras" ? `## 🛒 Nova Avaliação de Compra` : `## ⭐ Nova Avaliação de Atendimento`
+        ))
         .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-          `**Ticket:** \`${ticketName}\`\n**Membro:** <@${openerId}>\n**Nota:** ${stars} **(${nota}/5)**\n**Staff:** <@${claimerId}>\n**Data:** ${dateStr}`
+          `**Ticket:** \`${ticketName}\`\n` +
+          `**Ticket Type:** ${ticketType}\n` +
+          (cargoBought ? `**Cargo Comprado:** ${cargoBought}\n` : "") +
+          `**Membro:** <@${openerId}>\n` +
+          `**Nota:** ${stars} **(${nota}/5)**\n` +
+          `**Staff:** <@${claimerId}>\n` +
+          `**Data:** ${dateStr}`
         ))
         .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`));
@@ -1630,6 +1756,40 @@ Tempo restante: **${remaining} minuto(s)**`)
     }
     return;
   }
+}
+
+// ─── FIX #7: Helper para construir a DM de avaliação com estrelas ─────
+function buildRatingDM({ ticketName, openerId, claimerId, closerId, dateStr, ticketType, cargoBought }) {
+  // Codifica ticketType para não quebrar o split por "_"
+  const encodedType = encodeURIComponent(ticketType ?? "Desconhecido");
+  const encodedCargo = cargoBought ?? "null";
+  // customId: rate_TICKETNAME_OPENERID_CLAIMERID_TICKETTYPE_CARGO_NOTA
+  const baseId = `rate_${ticketName}_${openerId}_${claimerId}_${encodedType}_${encodedCargo}`;
+
+  const title = cargoBought
+    ? `## 🛒 Avalie sua Compra`
+    : `## 🔒 Seu Ticket Foi Encerrado`;
+
+  let extraInfo = `**Ticket:** \`${ticketName}\`\n**Ticket Type:** ${ticketType}\n`;
+  if (cargoBought) extraInfo += `**Cargo Comprado:** ${cargoBought}\n`;
+  extraInfo += `**Fechado por:** <@${closerId}>\n**Data:** ${dateStr}`;
+
+  return new ContainerBuilder()
+    .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(BANNERS.ticket)))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(title))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(extraInfo))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`⭐ **Como foi o nosso atendimento?**\nAvalie clicando em uma das opções abaixo:`))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`))
+    .addActionRowComponents(new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`${baseId}_1`).setLabel("⭐ 1").setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId(`${baseId}_2`).setLabel("⭐ 2").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`${baseId}_3`).setLabel("⭐ 3").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`${baseId}_4`).setLabel("⭐ 4").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(`${baseId}_5`).setLabel("⭐ 5").setStyle(ButtonStyle.Success)
+    ));
 }
 
 // ══════════════════════════════════════════════════════════════════════
