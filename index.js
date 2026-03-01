@@ -1519,7 +1519,7 @@ async function handleInteraction(interaction) {
         if (isCompra) {
           // FIX #7: DM de avaliação de compra com seleção de cargo + estrelas
           const cargoSelect = new StringSelectMenuBuilder()
-            .setCustomId(`compra_cargo_${ticketName}_${openerId}_${claimerId ?? interaction.user.id}`)
+            .setCustomId(`compra_cargo|${ticketName}|${openerId}|${claimerId ?? interaction.user.id}`)
             .setPlaceholder("Qual cargo você comprou?")
             .addOptions(
               new StringSelectMenuOptionBuilder().setLabel("Olheiro").setValue("olheiro").setEmoji("🔍"),
@@ -1565,13 +1565,12 @@ async function handleInteraction(interaction) {
   }
 
   // ── FIX #7: Seleção de cargo comprado (compras) ───────────────────────
-  if (interaction.isStringSelectMenu() && interaction.customId.startsWith("compra_cargo_")) {
-    const parts = interaction.customId.split("_");
-    // compra_cargo_TICKETNAME_OPENERID_CLAIMERID
-    // split by _ pode ter underscores no ticketname (ticket-0001), então:
-    const openerId  = parts[parts.length - 2];
-    const claimerId = parts[parts.length - 1];
-    const ticketName = parts.slice(2, parts.length - 2).join("_");
+  if (interaction.isStringSelectMenu() && interaction.customId.startsWith("compra_cargo|")) {
+    // formato: compra_cargo|TICKETNAME|OPENERID|CLAIMERID
+    const parts = interaction.customId.split("|");
+    const ticketName = parts[1];
+    const openerId   = parts[2];
+    const claimerId  = parts[3];
 
     const cargoLabel = {
       olheiro:           "Olheiro",
@@ -1723,14 +1722,17 @@ async function handleInteraction(interaction) {
   }
 
   // ── FIX #7: Avaliação unificada (estrelas) — funciona para ticket normal e compras ────
-  if (interaction.isButton() && interaction.customId.startsWith("rate_")) {
-    const parts      = interaction.customId.split("_");
-    const nota       = parseInt(parts[parts.length - 1]);
-    const claimerId  = parts[parts.length - 2];
-    const openerId   = parts[parts.length - 3];
-    const cargoBought = parts[parts.length - 4] !== "null" ? parts[parts.length - 4] : null;
-    const ticketType  = parts[parts.length - 5] !== "null" ? decodeURIComponent(parts[parts.length - 5]) : "Desconhecido";
-    const ticketName  = parts.slice(1, parts.length - 5).join("_");
+  if (interaction.isButton() && interaction.customId.startsWith("rate|")) {
+    // formato: rate|TICKETNAME|OPENERID|CLAIMERID|TICKETTYPE|CARGO|NOTA
+    const parts      = interaction.customId.split("|");
+    const nota       = parseInt(parts[6]);
+    const safeCargo  = parts[5];
+    const safeType   = parts[4];
+    const claimerId  = parts[3];
+    const openerId   = parts[2];
+    const ticketName = parts[1];
+    const cargoBought = safeCargo !== "null" ? decodeURIComponent(safeCargo) : null;
+    const ticketType  = safeType  !== "null" ? decodeURIComponent(safeType)  : "Desconhecido";
 
     await interaction.deferUpdate();
 
@@ -1781,10 +1783,11 @@ async function handleInteraction(interaction) {
 // ─── FIX #7: Helper para construir a DM de avaliação com estrelas ─────
 function buildRatingDM({ ticketName, openerId, claimerId, closerId, dateStr, ticketType, cargoBought }) {
   // Codifica ticketType para não quebrar o split por "_"
-  const encodedType = encodeURIComponent(ticketType ?? "Desconhecido");
-  const encodedCargo = cargoBought ?? "null";
-  // customId: rate_TICKETNAME_OPENERID_CLAIMERID_TICKETTYPE_CARGO_NOTA
-  const baseId = `rate_${ticketName}_${openerId}_${claimerId}_${encodedType}_${encodedCargo}`;
+  // customId usa | como separador para evitar conflito com _ do ticketName
+  // formato: rate|TICKETNAME|OPENERID|CLAIMERID|TICKETTYPE|CARGO|NOTA
+  const safeType  = encodeURIComponent(ticketType ?? "Desconhecido");
+  const safeCargo = encodeURIComponent(cargoBought ?? "null");
+  const baseId = `rate|${ticketName}|${openerId}|${claimerId}|${safeType}|${safeCargo}`;
 
   const title = cargoBought
     ? `## 🛒 Avalie sua Compra`
@@ -1804,11 +1807,11 @@ function buildRatingDM({ ticketName, openerId, claimerId, closerId, dateStr, tic
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`))
     .addActionRowComponents(new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(`${baseId}_1`).setLabel("⭐ 1").setStyle(ButtonStyle.Danger),
-      new ButtonBuilder().setCustomId(`${baseId}_2`).setLabel("⭐ 2").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId(`${baseId}_3`).setLabel("⭐ 3").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId(`${baseId}_4`).setLabel("⭐ 4").setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId(`${baseId}_5`).setLabel("⭐ 5").setStyle(ButtonStyle.Success)
+      new ButtonBuilder().setCustomId(`${baseId}|1`).setLabel("⭐ 1").setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId(`${baseId}|2`).setLabel("⭐ 2").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`${baseId}|3`).setLabel("⭐ 3").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`${baseId}|4`).setLabel("⭐ 4").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(`${baseId}|5`).setLabel("⭐ 5").setStyle(ButtonStyle.Success)
     ));
 }
 
