@@ -276,7 +276,7 @@ const IMAGE_WINDOW      = 10000; // ...10 segundos
 const MAX_MENTIONS      = 5;     // máx menções por mensagem
 
 function getSpam(userId) {
-  if (!spamTracker.has(userId)) spamTracker.set(userId, { msgs: [], images: [], lastContent: "" });
+  if (!spamTracker.has(userId)) spamTracker.set(userId, { msgs: [], images: [], lastContent: "", lastContentCount: 0 });
   return spamTracker.get(userId);
 }
 
@@ -347,11 +347,18 @@ async function handleAntiSpam(message) {
     return punish(`Emoji Spam detectado (${emojiMatches.length} emojis)`, "😵");
   }
 
-  // 4. Duplicate Text
+  // 4. Duplicate Text — só pune na 3ª mensagem igual seguida
   if (content.length > 5 && content === data.lastContent) {
-    return punish("Texto duplicado detectado", "🔁");
+    data.lastContentCount++;
+    if (data.lastContentCount >= 2) {
+      data.lastContentCount = 0;
+      data.lastContent = "";
+      return punish("Texto duplicado detectado", "🔁");
+    }
+  } else {
+    data.lastContent = content;
+    data.lastContentCount = 0;
   }
-  data.lastContent = content;
 
   // 5. Fast Message Spam (5 msgs em 5s)
   data.msgs.push(now);
@@ -1506,7 +1513,6 @@ async function handleInteraction(interaction) {
               new StringSelectMenuOptionBuilder().setLabel("Olheiro").setValue("olheiro").setEmoji("🔍"),
               new StringSelectMenuOptionBuilder().setLabel("Scrim Hoster").setValue("scrim_hoster").setEmoji("⚔️"),
               new StringSelectMenuOptionBuilder().setLabel("Pic Perm").setValue("pic_perm").setEmoji("📸"),
-              new StringSelectMenuOptionBuilder().setLabel("Canal Personalizado").setValue("canal_personalizado").setEmoji("🛠️"),
             );
 
           const dmC = new ContainerBuilder()
@@ -1558,7 +1564,7 @@ async function handleInteraction(interaction) {
       olheiro:           "Olheiro",
       scrim_hoster:      "Scrim Hoster",
       pic_perm:          "Pic Perm",
-      canal_personalizado: "Canal Personalizado",
+
     };
     const cargoBought = cargoLabel[interaction.values[0]] ?? interaction.values[0];
 
