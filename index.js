@@ -25,7 +25,6 @@ import {
   REST,
   Routes,
   SlashCommandBuilder,
-  AuditLogEvent,
 } from "discord.js";
 
 const TOKEN     = process.env.TOKEN;
@@ -67,14 +66,18 @@ const BANNERS = {
   ticket  : "https://cdn.discordapp.com/attachments/1469069997975535646/1474427362362916955/imagem_2026-02-20_122753297-Photoroom.png",
 };
 
-// ─── Blacklist de frases/links ─────────────────────────────────────────
-// FIX #6: Blacklist de mensagem com link malicioso
 const BLACKLIST_PATTERNS = [
   /Yooo looook at girl in vc/i,
   /cute-voice/i,
 ];
 
-// ─── Port lock ────────────────────────────────────────────────────────
+const EMOJI_FREE_CHANNELS = new Set([
+  FREEAGENT_CHANNEL_ID,
+  LEAGUES_CHANNEL_ID,
+  SCOUTING_CHANNEL_ID,
+  FREELINKS_CHANNEL_ID,
+]);
+
 import { createServer } from "net";
 const lockServer = createServer();
 lockServer.on("error", () => {
@@ -83,7 +86,6 @@ lockServer.on("error", () => {
 });
 lockServer.listen(19876, "127.0.0.1");
 
-// ─── Client ───────────────────────────────────────────────────────────
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -102,7 +104,6 @@ client.once("ready", async () => {
   setInterval(checkTempRoles, 60_000);
 });
 
-// ─── Slash Commands ───────────────────────────────────────────────────
 async function registerSlashCommands() {
   if (!CLIENT_ID) { console.warn("⚠️ CLIENT_ID não definido."); return; }
   const commands = [
@@ -203,7 +204,6 @@ async function registerSlashCommands() {
   } catch (e) { console.error("Erro ao registrar slash commands:", e); }
 }
 
-// ─── Persistence helpers ──────────────────────────────────────────────
 import { readFileSync, writeFileSync, existsSync } from "fs";
 
 function loadJSON(path, fallback) {
@@ -232,7 +232,6 @@ function saveTicketData(map) {
   saveJSON("./ticketdata.json", obj);
 }
 
-// ─── Temp Roles checker ───────────────────────────────────────────────
 async function checkTempRoles() {
   const now  = Date.now();
   const data = loadTempRoles();
@@ -257,7 +256,6 @@ async function checkTempRoles() {
   saveTempRoles(keep);
 }
 
-// ─── BRT date helper ──────────────────────────────────────────────────
 function getBRT() {
   return new Date().toLocaleString("pt-BR", {
     timeZone: "America/Sao_Paulo",
@@ -266,28 +264,27 @@ function getBRT() {
   });
 }
 
-// ─── Runtime state ────────────────────────────────────────────────────
 const handled        = new Set();
 const cmdCooldown    = new Set();
-const ticketOpening  = new Set(); // FIX #2: guarda userId → previne ticket duplo por usuário
+const ticketOpening  = new Set();
 const claimedTickets = new Set();
 const ticketData     = loadTicketData();
 const ratedTickets   = new Set();
 
-// ─── FIX #3/#4/#5: Anti-Spam/Flood/Emoji/Imagem/Menção/Duplicate/Blacklist ─
-// Mapa: userId → { msgs: [timestamps], images: [timestamps], lastContent: string }
-const spamTracker = new Map();
+const EMOJI_REGEX      = /(\p{Emoji_Presentation}|\p{Extended_Pictographic})/gu;
+const MAX_EMOJIS       = 10;
+const FAST_MSG_LIMIT   = 5;
+const FAST_MSG_WINDOW  = 5000;
+const IMAGE_LIMIT      = 3;
+const IMAGE_WINDOW     = 10000;
+const MAX_MENTIONS     = 5;
+const DUP_WINDOW       = 30_000;
 
-const EMOJI_REGEX = /(\p{Emoji_Presentation}|\p{Extended_Pictographic})/gu;
-const MAX_EMOJIS        = 10;    // máx emojis por mensagem
-const FAST_MSG_LIMIT    = 5;     // máx msgs em...
-const FAST_MSG_WINDOW   = 5000;  // ...5 segundos
-const IMAGE_LIMIT       = 3;     // máx imagens em...
-const IMAGE_WINDOW      = 10000; // ...10 segundos
-const MAX_MENTIONS      = 5;     // máx menções por mensagem
+const spamTracker = new Map();
+const pendingConfirm = new Map();
 
 function getSpam(userId) {
-  if (!spamTracker.has(userId)) spamTracker.set(userId, { msgs: [], images: [], lastContent: "", lastContentCount: 0 });
+  if (!spamTracker.has(userId)) spamTracker.set(userId, { msgs: [], images: [], lastContent: "", lastContentTime: 0, lastContentCount: 0, punished: false });
   return spamTracker.get(userId);
 }
 
@@ -304,8 +301,11 @@ async function handleAntiSpam(message) {
   const logCh   = message.guild.channels.cache.get(LOG_CHANNEL_ID);
 
   async function punish(reason, emoji) {
+    if (data.punished) return true;
+    data.punished = true;
+    setTimeout(() => { data.punished = false; }, 8000);
+
     await message.delete().catch(() => {});
-    // Mute 5 minutos
     await member.timeout(5 * 60_000, reason).catch(() => {});
     const w = await message.channel.send({
       content: `<@${userId}> 🚫 **${reason}** — você foi silenciado por **5 minutos**.`
@@ -314,8 +314,9 @@ async function handleAntiSpam(message) {
 
     logCh?.send({ embeds: [new EmbedBuilder()
       .setTitle(`${emoji} AutoMod — ${reason}`)
+      .setThumbnail(message.author.displayAvatarURL({ size: 128 }))
       .addFields(
-        { name: "Usuário", value: `<@${userId}>`, inline: true },
+        { name: "Usuário", value: `<@${userId}> (\`${message.author.tag}\`)`, inline: true },
         { name: "Canal",   value: `<#${message.channel.id}>`, inline: true },
         { name: "Conteúdo", value: content.slice(0, 500) || "[sem texto]", inline: false },
       )
@@ -324,15 +325,15 @@ async function handleAntiSpam(message) {
     return true;
   }
 
-  // 1. Blacklist
   for (const pattern of BLACKLIST_PATTERNS) {
     if (pattern.test(content)) {
       await message.delete().catch(() => {});
       await member.timeout(10 * 60_000, "Mensagem na blacklist").catch(() => {});
       logCh?.send({ embeds: [new EmbedBuilder()
         .setTitle("🚫 AutoMod — Blacklist")
+        .setThumbnail(message.author.displayAvatarURL({ size: 128 }))
         .addFields(
-          { name: "Usuário", value: `<@${userId}>`, inline: true },
+          { name: "Usuário", value: `<@${userId}> (\`${message.author.tag}\`)`, inline: true },
           { name: "Canal",   value: `<#${message.channel.id}>`, inline: true },
           { name: "Conteúdo", value: content.slice(0, 500), inline: false },
         )
@@ -346,32 +347,31 @@ async function handleAntiSpam(message) {
     }
   }
 
-  // 2. Mass Mentions
   const mentionCount = (message.mentions.users.size + message.mentions.roles.size);
-  if (mentionCount >= MAX_MENTIONS) {
-    return punish(`Mass Mentions detectado (${mentionCount} menções)`, "📣");
-  }
+  if (mentionCount >= MAX_MENTIONS) return punish(`Mass Mentions detectado (${mentionCount} menções)`, "📣");
 
-  // 3. Emoji Spam
-  const emojiMatches = content.match(EMOJI_REGEX);
-  if (emojiMatches && emojiMatches.length > MAX_EMOJIS) {
-    return punish(`Emoji Spam detectado (${emojiMatches.length} emojis)`, "😵");
-  }
-
-  // 4. Duplicate Text — só pune na 3ª mensagem igual seguida
-  if (content.length > 5 && content === data.lastContent) {
-    data.lastContentCount++;
-    if (data.lastContentCount >= 2) {
-      data.lastContentCount = 0;
-      data.lastContent = "";
-      return punish("Texto duplicado detectado", "🔁");
+  if (!EMOJI_FREE_CHANNELS.has(message.channel.id)) {
+    const emojiMatches = content.match(EMOJI_REGEX);
+    if (emojiMatches && emojiMatches.length > MAX_EMOJIS) {
+      return punish(`Emoji Spam detectado (${emojiMatches.length} emojis)`, "😵");
     }
-  } else {
-    data.lastContent = content;
-    data.lastContentCount = 0;
   }
 
-  // 5. Fast Message Spam (5 msgs em 5s)
+  if (content.length > 5) {
+    if (content === data.lastContent && (now - data.lastContentTime) < DUP_WINDOW) {
+      data.lastContentCount++;
+      if (data.lastContentCount >= 2) {
+        data.lastContentCount = 0;
+        data.lastContent = "";
+        return punish("Texto duplicado detectado", "🔁");
+      }
+    } else {
+      data.lastContent = content;
+      data.lastContentTime = now;
+      data.lastContentCount = 0;
+    }
+  }
+
   data.msgs.push(now);
   data.msgs = data.msgs.filter(t => now - t < FAST_MSG_WINDOW);
   if (data.msgs.length >= FAST_MSG_LIMIT) {
@@ -379,7 +379,6 @@ async function handleAntiSpam(message) {
     return punish("Fast Message Spam detectado", "⚡");
   }
 
-  // 6. Image Spam (3 imagens em 10s)
   if (message.attachments.size > 0) {
     data.images.push(now);
     data.images = data.images.filter(t => now - t < IMAGE_WINDOW);
@@ -392,62 +391,54 @@ async function handleAntiSpam(message) {
   return false;
 }
 
-// ─── guildMemberAdd ───────────────────────────────────────────────────
 client.on("guildMemberAdd", async (member) => {
   const ch = member.guild.channels.cache.get(WELCOME_CHANNEL_ID);
   if (ch) await sendWelcome(ch, member);
 });
 
-// ─── messageCreate — anti-spam + bloqueio de convites ─────────────────
-// FIX #1: ÚNICO listener para messageCreate geral (evita logs duplicados)
 client.on("messageCreate", async (message) => {
   if (message.author.bot || !message.guild) return;
 
-  // Anti-spam (roda antes de tudo)
   const blocked = await handleAntiSpam(message);
   if (blocked) return;
 
-  // Bloqueia convites Discord em canais não autorizados
   const inviteRegex = /discord(?:\.gg|app\.com\/invite|\.com\/invite)\/[a-zA-Z0-9]+/i;
   const member = message.member;
   if (inviteRegex.test(message.content) && member) {
     const isAdmin = member.permissions.has(PermissionFlagsBits.Administrator);
-    if (isAdmin) return;
-
-    const allowedChannels = [FREEAGENT_CHANNEL_ID, SCOUTING_CHANNEL_ID, PARCERIA_CHANNEL_ID, FREELINKS_CHANNEL_ID, LEAGUES_CHANNEL_ID];
-    const isTicketChannel = message.channel.name?.startsWith("ticket-");
-
-    if (!allowedChannels.includes(message.channel.id) && !isTicketChannel) {
-      await message.delete().catch(() => {});
-      try {
-        const dmMsg = new ContainerBuilder()
-          .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-            `## 🚫 Convite não permitido!\n\n` +
-            `<@${message.author.id}>, você **não pode enviar convites** neste canal.\n\n` +
-            `> 🔒 Para manter a organização do servidor **PAFO**, links de convite são **restritos** a canais específicos ou precisam de autorização da staff.\n\n` +
-            `> ❓ Caso tenha dúvidas ou queira solicitar permissão, entre em contato com a equipe de moderação em <#1449068500567068804>.`
-          ))
-          .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Sistema de Moderação`));
-        await message.author.send({ components: [dmMsg], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
-      } catch {}
-
-      const logCh = message.guild.channels.cache.get(LOG_CHANNEL_ID);
-      if (logCh) {
-        const logMsg = new ContainerBuilder()
-          .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-            `### 📝 Mensagem deletada — Convite bloqueado\n` +
-            `**Usuário:** <@${message.author.id}> (\`${message.author.tag}\`)\n` +
-            `**Canal:** <#${message.channel.id}>\n` +
-            `**Conteúdo:**\n\`\`\`\n${message.content.slice(0, 500)}\n\`\`\`\n` +
-            `**Data:** ${getBRT()}`
-          ));
-        await logCh.send({ components: [logMsg], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+    if (!isAdmin) {
+      const allowedChannels = [FREEAGENT_CHANNEL_ID, SCOUTING_CHANNEL_ID, PARCERIA_CHANNEL_ID, FREELINKS_CHANNEL_ID, LEAGUES_CHANNEL_ID];
+      const isTicketChannel = message.channel.name?.startsWith("ticket-");
+      if (!allowedChannels.includes(message.channel.id) && !isTicketChannel) {
+        await message.delete().catch(() => {});
+        try {
+          const dmMsg = new ContainerBuilder()
+            .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+              `## 🚫 Convite não permitido!\n\n` +
+              `<@${message.author.id}>, você **não pode enviar convites** neste canal.\n\n` +
+              `> 🔒 Para manter a organização do servidor **PAFO**, links de convite são **restritos** a canais específicos ou precisam de autorização da staff.\n\n` +
+              `> ❓ Caso tenha dúvidas ou queira solicitar permissão, entre em contato com a equipe de moderação em <#1449068500567068804>.`
+            ))
+            .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Sistema de Moderação`));
+          await message.author.send({ components: [dmMsg], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+        } catch {}
+        const logCh = message.guild.channels.cache.get(LOG_CHANNEL_ID);
+        if (logCh) {
+          const logMsg = new ContainerBuilder()
+            .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+              `### 📝 Mensagem deletada — Convite bloqueado\n` +
+              `**Usuário:** <@${message.author.id}> (\`${message.author.tag}\`)\n` +
+              `**Canal:** <#${message.channel.id}>\n` +
+              `**Conteúdo:**\n\`\`\`\n${message.content.slice(0, 500)}\n\`\`\`\n` +
+              `**Data:** ${getBRT()}`
+            ));
+          await logCh.send({ components: [logMsg], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+        }
+        return;
       }
-      return;
     }
   }
 
-  // Filtro free-agents (IA)
   if (message.channel.id === FREEAGENT_CHANNEL_ID && !member?.permissions.has(PermissionFlagsBits.Administrator) && !isStaff(member)) {
     if (!message.content.trim().toLowerCase().startsWith("!freeagent")) {
       const content = message.content.trim();
@@ -462,6 +453,7 @@ client.on("messageCreate", async (message) => {
           const logCh = message.guild.channels.cache.get(LOG_CHANNEL_ID);
           logCh?.send({ embeds: [new EmbedBuilder()
             .setTitle("🚫 Scouting bloqueado no free-agents")
+            .setThumbnail(message.author.displayAvatarURL({ size: 128 }))
             .addFields(
               { name: "Usuário", value: `<@${message.author.id}>`, inline: true },
               { name: "Conteúdo", value: content.slice(0, 500), inline: false },
@@ -474,7 +466,6 @@ client.on("messageCreate", async (message) => {
     }
   }
 
-  // !freeagent
   if (message.content.trim().toLowerCase().startsWith("!freeagent")) {
     if (!member) return;
     const cdKey = `fa_${member.id}`;
@@ -523,7 +514,6 @@ client.on("messageCreate", async (message) => {
     return;
   }
 
-  // Text commands (admin only)
   if (handled.has(message.id)) return;
   handled.add(message.id);
   setTimeout(() => handled.delete(message.id), 10_000);
@@ -561,31 +551,77 @@ client.on("messageCreate", async (message) => {
   return map[content]?.();
 });
 
-// ─── messageDelete — log tipo Loritta ─────────────────────────────────
-// FIX #1: listener separado para messageDelete, sem duplicação
 client.on("messageDelete", async (message) => {
   if (!message.guild || message.author?.bot) return;
   const logCh = message.guild.channels.cache.get(LOG_CHANNEL_ID);
   if (!logCh) return;
   if (!message.content && message.attachments.size === 0) return;
 
-  const authorTag = message.author?.tag ?? "Desconhecido";
-  const authorId  = message.author?.id  ?? "?";
-  const channelId = message.channel?.id ?? "?";
-  const content   = message.content ? message.content.slice(0, 1000) : "[sem texto]";
+  const authorTag  = message.author?.tag ?? "Desconhecido";
+  const authorId   = message.author?.id  ?? "?";
+  const channelId  = message.channel?.id ?? "?";
+  const content    = message.content ? message.content.slice(0, 1000) : "[sem texto]";
+  const avatarURL  = message.author?.displayAvatarURL({ size: 128 }) ?? null;
 
-  const logMsg = new ContainerBuilder()
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `### 📝 Mensagem de texto deletada\n` +
-      `**Usuário:** <@${authorId}> (\`${authorTag}\`)\n` +
-      `**Canal:** <#${channelId}>\n\n` +
-      `**Mensagem:**\n\`\`\`\n${content}\n\`\`\`\n` +
-      `-# ID do usuário: ${authorId} • ${getBRT()}`
-    ));
-  await logCh.send({ components: [logMsg], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+  const embed = new EmbedBuilder()
+    .setAuthor({ name: `${authorTag} (${authorId})`, iconURL: avatarURL ?? undefined })
+    .setTitle("🗑️ Mensagem Deletada")
+    .addFields(
+      { name: "Canal", value: `<#${channelId}>`, inline: true },
+      { name: "Autor", value: `<@${authorId}>`, inline: true },
+      { name: "Conteúdo", value: `\`\`\`${content}\`\`\``, inline: false },
+    )
+    .setColor(0xED4245)
+    .setFooter({ text: `ID da mensagem: ${message.id} • ${getBRT()}` })
+    .setTimestamp();
+
+  if (avatarURL) embed.setThumbnail(avatarURL);
+
+  if (message.attachments.size > 0) {
+    const urls = Array.from(message.attachments.values()).map(a => a.url).join("\n");
+    embed.addFields({ name: "Anexos", value: urls.slice(0, 1024), inline: false });
+  }
+
+  await logCh.send({ embeds: [embed] }).catch(() => {});
 });
 
-// ─── Bloqueio de scouting no canal free-agents (via IA) ─────────────────
+client.on("messageUpdate", async (oldMessage, newMessage) => {
+  if (!newMessage.guild || newMessage.author?.bot) return;
+  if (oldMessage.content === newMessage.content) return;
+
+  const logCh = newMessage.guild.channels.cache.get(LOG_CHANNEL_ID);
+  if (!logCh) return;
+
+  const authorTag = newMessage.author?.tag ?? "Desconhecido";
+  const authorId  = newMessage.author?.id  ?? "?";
+  const channelId = newMessage.channel?.id ?? "?";
+  const avatarURL = newMessage.author?.displayAvatarURL({ size: 128 }) ?? null;
+
+  const oldContent = oldMessage.content ? oldMessage.content.slice(0, 500) : "[não disponível]";
+  const newContent = newMessage.content ? newMessage.content.slice(0, 500) : "[sem texto]";
+
+  const embed = new EmbedBuilder()
+    .setAuthor({ name: `${authorTag} (${authorId})`, iconURL: avatarURL ?? undefined })
+    .setTitle("✏️ Mensagem Editada")
+    .addFields(
+      { name: "Canal", value: `<#${channelId}>`, inline: true },
+      { name: "Autor", value: `<@${authorId}>`, inline: true },
+      { name: "Antes", value: `\`\`\`${oldContent}\`\`\``, inline: false },
+      { name: "Depois", value: `\`\`\`${newContent}\`\`\``, inline: false },
+    )
+    .setColor(0xFEE75C)
+    .setFooter({ text: `ID da mensagem: ${newMessage.id} • ${getBRT()}` })
+    .setTimestamp();
+
+  if (avatarURL) embed.setThumbnail(avatarURL);
+
+  const jumpBtn = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setURL(newMessage.url).setLabel("Ver Mensagem").setStyle(ButtonStyle.Link).setEmoji("🔗")
+  );
+
+  await logCh.send({ embeds: [embed], components: [jumpBtn] }).catch(() => {});
+});
+
 async function classifyFreeAgentMessage(content) {
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -606,19 +642,24 @@ async function classifyFreeAgentMessage(content) {
   }
 }
 
-// ─── Staff check ──────────────────────────────────────────────────────
 function isStaff(member) {
   return STAFF_ROLES.some(id => member.roles.cache.has(id)) || member.permissions.has(PermissionFlagsBits.Administrator);
 }
 
-// ─── Log de punição tipo Loritta ──────────────────────────────────────
 async function logPunishment(guild, { tipo, emoji, staffId, membroTag, membroId, motivo, extra = "" }) {
   const punCh = guild.channels.cache.get(PUNITIONS_CHANNEL_ID);
   if (!punCh) return;
 
+  const staff  = await guild.members.fetch(staffId).catch(() => null);
+  const membro = await guild.members.fetch(membroId).catch(() => null);
+
   const embed = new EmbedBuilder()
+    .setAuthor({
+      name: `${staff?.user?.tag ?? staffId}`,
+      iconURL: staff?.user?.displayAvatarURL({ size: 128 }) ?? undefined,
+    })
     .setTitle(`${emoji} ${tipo}`)
-    .setDescription(`• O usuário foi ${tipo === "Banimento Aplicado!" ? "removido permanentemente" : tipo === "Silenciamento aplicado" ? "temporariamente impedido de enviar mensagens" : "punido"} do servidor.`)
+    .setDescription(`• O usuário foi punido no servidor PAFO.`)
     .addFields(
       { name: "Staff",  value: `<@${staffId}>`,                    inline: false },
       { name: "Membro", value: `${membroTag}`,                     inline: false },
@@ -626,31 +667,42 @@ async function logPunishment(guild, { tipo, emoji, staffId, membroTag, membroId,
     );
 
   if (motivo) embed.addFields({ name: "Motivo", value: motivo, inline: false });
-  if (extra)  embed.setFooter({ text: extra });
+  if (extra)  embed.addFields({ name: "Info", value: extra, inline: false });
+
+  if (membro) embed.setThumbnail(membro.user.displayAvatarURL({ size: 128 }));
 
   embed.setColor(
     tipo.includes("Banimento")    ? 0xED4245 :
     tipo.includes("Silenciamento")? 0xFEE75C :
     tipo.includes("Kick")         ? 0xFFA500 :
     tipo.includes("Advertência")  ? 0xFF6B35 : 0x5865F2
-  ).setTimestamp();
-
-  try {
-    const member = await guild.members.fetch(membroId).catch(() => null);
-    if (member) embed.setThumbnail(member.user.displayAvatarURL({ size: 128 }));
-  } catch {}
+  ).setTimestamp().setFooter({ text: "PAFO — Sistema de Moderação", iconURL: SERVER_ICON });
 
   await punCh.send({ embeds: [embed] }).catch(() => {});
 }
 
-// ─── Interactions ─────────────────────────────────────────────────────
+function buildConfirmEmbed({ emoji, title, description, staffUser, targetUser, targetTag, targetId, motivo, extra }) {
+  const embed = new EmbedBuilder()
+    .setAuthor({ name: staffUser.tag, iconURL: staffUser.displayAvatarURL({ size: 128 }) })
+    .setTitle(`${emoji} ${title}`)
+    .setDescription(description ?? "")
+    .addFields(
+      { name: "Alvo", value: targetTag ? `${targetTag} (\`${targetId}\`)` : `<@${targetId}>`, inline: false },
+      { name: "Motivo", value: motivo ?? "Sem motivo", inline: false },
+    );
+  if (extra) embed.addFields({ name: "Info", value: extra, inline: false });
+  if (targetUser) embed.setThumbnail(targetUser.displayAvatarURL?.({ size: 128 }) ?? null);
+  embed.setColor(0xFEE75C).setTimestamp().setFooter({ text: "Confirme a ação abaixo", iconURL: SERVER_ICON });
+  return embed;
+}
+
 client.on("interactionCreate", (i) => handleInteraction(i).catch(e => {
   if (e?.code === 10062 || e?.message?.includes("Unknown interaction")) return;
   console.error("Erro interaction:", e);
 }));
 
 async function handleInteraction(interaction) {
-  // ── /setroletemp ─────────────────────────────────────────────────────
+
   if (interaction.isChatInputCommand() && interaction.commandName === "setroletemp") {
     if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator))
       return interaction.reply({ content: "❌ Sem permissão.", flags: MessageFlags.Ephemeral });
@@ -691,7 +743,6 @@ async function handleInteraction(interaction) {
     return;
   }
 
-  // ── /ban ──────────────────────────────────────────────────────────────
   if (interaction.isChatInputCommand() && interaction.commandName === "ban") {
     const target = interaction.options.getUser("usuario");
     const motivo = interaction.options.getString("motivo") ?? "Sem motivo especificado";
@@ -712,43 +763,76 @@ async function handleInteraction(interaction) {
       return interaction.reply({ content: "❌ Não é possível banir um administrador.", flags: MessageFlags.Ephemeral });
     }
 
+    const confirmEmbed = buildConfirmEmbed({
+      emoji: "🔨", title: "Confirmar Banimento",
+      description: "Você tem certeza que deseja banir este usuário?",
+      staffUser: interaction.user, targetUser: target,
+      targetTag: target.tag, targetId: target.id,
+      motivo, extra: dias > 0 ? `Deletar mensagens dos últimos ${dias} dia(s)` : null,
+    });
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`confirm_ban_${target.id}_${dias}_${Date.now()}`).setLabel("Confirmar Ban").setStyle(ButtonStyle.Danger).setEmoji("🔨"),
+      new ButtonBuilder().setCustomId("cancel_action").setLabel("Cancelar").setStyle(ButtonStyle.Secondary).setEmoji("❌"),
+    );
+
+    pendingConfirm.set(`ban_${target.id}_${interaction.user.id}`, { motivo, dias, targetTag: target.tag });
+    return interaction.reply({ embeds: [confirmEmbed], components: [row], flags: MessageFlags.Ephemeral });
+  }
+
+  if (interaction.isButton() && interaction.customId.startsWith("confirm_ban_")) {
+    const parts    = interaction.customId.split("_");
+    const targetId = parts[2];
+    const dias     = parseInt(parts[3]) || 0;
+    const key      = `ban_${targetId}_${interaction.user.id}`;
+    const stored   = pendingConfirm.get(key);
+    if (!stored) return interaction.update({ content: "⚠️ Ação expirada.", embeds: [], components: [] });
+    pendingConfirm.delete(key);
+
+    const { motivo, targetTag } = stored;
+    const target = await interaction.guild.members.fetch(targetId).catch(() => null);
+
     try {
       const dm = new ContainerBuilder()
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(
           `## 🔨 Você foi banido do servidor PAFO\n\n` +
-          `**Motivo:** ${motivo}\n` +
-          `**Staff:** <@${interaction.user.id}>\n\n` +
+          `**Motivo:** ${motivo}\n**Staff:** <@${interaction.user.id}>\n\n` +
           `Se acredita que o ban foi injusto, use o servidor de appeal:\n🔗 ${APPEAL_SERVER}`
         ))
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Sistema de Moderação`));
-      await target.send({ components: [dm], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+      await (target?.send ?? interaction.guild.members.cache.get(targetId)?.send)?.({ components: [dm], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
     } catch {}
 
     try {
-      await interaction.guild.members.ban(target.id, { reason: `${motivo} | Staff: ${interaction.user.tag}`, deleteMessageDays: dias });
+      await interaction.guild.members.ban(targetId, { reason: `${motivo} | Staff: ${interaction.user.tag}`, deleteMessageDays: dias });
     } catch (e) {
-      return interaction.reply({ content: `❌ Erro ao banir: ${e.message}`, flags: MessageFlags.Ephemeral });
+      return interaction.update({ content: `❌ Erro ao banir: ${e.message}`, embeds: [], components: [] });
     }
 
-    await interaction.reply({ embeds: [new EmbedBuilder()
+    const resultEmbed = new EmbedBuilder()
+      .setAuthor({ name: interaction.user.tag, iconURL: interaction.user.displayAvatarURL({ size: 128 }) })
       .setTitle("🔨 Usuário Banido")
+      .setThumbnail(target?.user?.displayAvatarURL({ size: 128 }) ?? null)
       .addFields(
-        { name: "Usuário", value: `${target.tag} (\`${target.id}\`)`, inline: false },
+        { name: "Usuário", value: `${targetTag} (\`${targetId}\`)`, inline: false },
         { name: "Motivo",  value: motivo, inline: false },
         { name: "Staff",   value: `<@${interaction.user.id}>`, inline: true },
         { name: "Data",    value: getBRT(), inline: true },
       )
-      .setColor(0xED4245).setFooter({ text: `ID: ${target.id}` }).setTimestamp()
-    ]});
+      .setColor(0xED4245).setFooter({ text: `ID: ${targetId}` }).setTimestamp();
 
+    await interaction.update({ embeds: [resultEmbed], components: [] });
     await logPunishment(interaction.guild, {
       tipo: "Banimento Aplicado!", emoji: "🔨",
-      staffId: interaction.user.id, membroTag: target.tag, membroId: target.id, motivo
+      staffId: interaction.user.id, membroTag: targetTag, membroId: targetId, motivo
     });
     return;
   }
 
-  // ── /unban ────────────────────────────────────────────────────────────
+  if (interaction.isButton() && interaction.customId === "cancel_action") {
+    return interaction.update({ content: "❌ Ação cancelada.", embeds: [], components: [] });
+  }
+
   if (interaction.isChatInputCommand() && interaction.commandName === "unban") {
     const userId = interaction.options.getString("userid")?.trim();
     const motivo = interaction.options.getString("motivo") ?? "Sem motivo especificado";
@@ -762,6 +846,7 @@ async function handleInteraction(interaction) {
     }
 
     await interaction.reply({ embeds: [new EmbedBuilder()
+      .setAuthor({ name: interaction.user.tag, iconURL: interaction.user.displayAvatarURL({ size: 128 }) })
       .setTitle("✅ Usuário Desbanido")
       .addFields(
         { name: "ID",     value: userId, inline: true },
@@ -783,7 +868,6 @@ async function handleInteraction(interaction) {
     return;
   }
 
-  // ── /mute ─────────────────────────────────────────────────────────────
   if (interaction.isChatInputCommand() && interaction.commandName === "mute") {
     const target  = interaction.options.getMember("usuario");
     const minutos = interaction.options.getInteger("minutos");
@@ -803,32 +887,62 @@ async function handleInteraction(interaction) {
       return interaction.reply({ content: "❌ Não é possível silenciar um administrador.", flags: MessageFlags.Ephemeral });
     }
 
+    const confirmEmbed = buildConfirmEmbed({
+      emoji: "🔇", title: "Confirmar Silenciamento",
+      description: "Você tem certeza que deseja silenciar este membro?",
+      staffUser: interaction.user, targetUser: target.user,
+      targetTag: target.user.tag, targetId: target.id,
+      motivo, extra: `Duração: **${minutos} minuto(s)**`,
+    });
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`confirm_mute_${target.id}_${minutos}_${Date.now()}`).setLabel("Confirmar Mute").setStyle(ButtonStyle.Danger).setEmoji("🔇"),
+      new ButtonBuilder().setCustomId("cancel_action").setLabel("Cancelar").setStyle(ButtonStyle.Secondary).setEmoji("❌"),
+    );
+
+    pendingConfirm.set(`mute_${target.id}_${interaction.user.id}`, { motivo, minutos, targetTag: target.user.tag });
+    return interaction.reply({ embeds: [confirmEmbed], components: [row], flags: MessageFlags.Ephemeral });
+  }
+
+  if (interaction.isButton() && interaction.customId.startsWith("confirm_mute_")) {
+    const parts    = interaction.customId.split("_");
+    const targetId = parts[2];
+    const minutos  = parseInt(parts[3]);
+    const key      = `mute_${targetId}_${interaction.user.id}`;
+    const stored   = pendingConfirm.get(key);
+    if (!stored) return interaction.update({ content: "⚠️ Ação expirada.", embeds: [], components: [] });
+    pendingConfirm.delete(key);
+
+    const { motivo, targetTag } = stored;
+    const target = await interaction.guild.members.fetch(targetId).catch(() => null);
+
     try {
       await target.timeout(minutos * 60_000, `${motivo} | Staff: ${interaction.user.tag}`);
     } catch (e) {
-      return interaction.reply({ content: `❌ Erro ao silenciar: ${e.message}`, flags: MessageFlags.Ephemeral });
+      return interaction.update({ content: `❌ Erro ao silenciar: ${e.message}`, embeds: [], components: [] });
     }
 
-    await interaction.reply({ embeds: [new EmbedBuilder()
+    const resultEmbed = new EmbedBuilder()
+      .setAuthor({ name: interaction.user.tag, iconURL: interaction.user.displayAvatarURL({ size: 128 }) })
       .setTitle("🔇 Membro Silenciado")
+      .setThumbnail(target?.user?.displayAvatarURL({ size: 128 }) ?? null)
       .addFields(
-        { name: "Membro",  value: `<@${target.id}>`, inline: true },
+        { name: "Membro",  value: `<@${targetId}>`, inline: true },
         { name: "Duração", value: `${minutos} minuto(s)`, inline: true },
         { name: "Motivo",  value: motivo, inline: false },
         { name: "Staff",   value: `<@${interaction.user.id}>`, inline: true },
       )
-      .setColor(0xFEE75C).setTimestamp()
-    ]});
+      .setColor(0xFEE75C).setTimestamp();
 
+    await interaction.update({ embeds: [resultEmbed], components: [] });
     await logPunishment(interaction.guild, {
       tipo: "Silenciamento aplicado", emoji: "🔇",
-      staffId: interaction.user.id, membroTag: target.user.tag, membroId: target.id,
+      staffId: interaction.user.id, membroTag: targetTag, membroId: targetId,
       motivo, extra: `Duração: ${minutos} minuto(s)`
     });
     return;
   }
 
-  // ── /unmute ───────────────────────────────────────────────────────────
   if (interaction.isChatInputCommand() && interaction.commandName === "unmute") {
     const target = interaction.options.getMember("usuario");
     const motivo = interaction.options.getString("motivo") ?? "Sem motivo especificado";
@@ -850,7 +964,9 @@ async function handleInteraction(interaction) {
     }
 
     await interaction.reply({ embeds: [new EmbedBuilder()
+      .setAuthor({ name: interaction.user.tag, iconURL: interaction.user.displayAvatarURL({ size: 128 }) })
       .setTitle("🔊 Silenciamento Removido")
+      .setThumbnail(target.user.displayAvatarURL({ size: 128 }))
       .addFields(
         { name: "Membro", value: `<@${target.id}>`, inline: true },
         { name: "Motivo", value: motivo, inline: false },
@@ -871,19 +987,15 @@ async function handleInteraction(interaction) {
     return;
   }
 
-  // ── /warn ─────────────────────────────────────────────────────────────
   if (interaction.isChatInputCommand() && interaction.commandName === "warn") {
     const target = interaction.options.getMember("usuario");
     const motivo = interaction.options.getString("motivo");
 
     if (!target) return interaction.reply({ content: "❌ Membro não encontrado.", flags: MessageFlags.Ephemeral });
-
-    if (target.permissions.has(PermissionFlagsBits.Administrator)) {
+    if (target.permissions.has(PermissionFlagsBits.Administrator))
       return interaction.reply({ content: "❌ Não é possível advertir um administrador.", flags: MessageFlags.Ephemeral });
-    }
-    if (target.id === interaction.user.id) {
+    if (target.id === interaction.user.id)
       return interaction.reply({ content: "❌ Você não pode se advertir.", flags: MessageFlags.Ephemeral });
-    }
 
     const warns = loadWarns();
     if (!warns[target.id]) warns[target.id] = [];
@@ -898,8 +1010,7 @@ async function handleInteraction(interaction) {
         const dm = new ContainerBuilder()
           .addTextDisplayComponents(new TextDisplayBuilder().setContent(
             `## 🔨 Você foi banido do servidor PAFO\n\n` +
-            `**Motivo:** 3ª Advertência — ${motivo}\n` +
-            `**Staff:** <@${interaction.user.id}>\n\n` +
+            `**Motivo:** 3ª Advertência — ${motivo}\n**Staff:** <@${interaction.user.id}>\n\n` +
             `Se acredita que o ban foi injusto:\n🔗 ${APPEAL_SERVER}`
           ))
           .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Sistema de Moderação`));
@@ -907,7 +1018,9 @@ async function handleInteraction(interaction) {
       } catch {}
       await interaction.guild.members.ban(target.id, { reason: `3ª Advertência: ${motivo} | Staff: ${interaction.user.tag}` }).catch(() => {});
       await interaction.reply({ embeds: [new EmbedBuilder()
+        .setAuthor({ name: interaction.user.tag, iconURL: interaction.user.displayAvatarURL({ size: 128 }) })
         .setTitle("🔨 3ª Advertência — Banimento Aplicado")
+        .setThumbnail(target.user.displayAvatarURL({ size: 128 }))
         .addFields(
           { name: "Membro", value: `<@${target.id}>`, inline: true },
           { name: "Motivo", value: motivo, inline: false },
@@ -936,18 +1049,17 @@ async function handleInteraction(interaction) {
       const dm = new ContainerBuilder()
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(
           `## ⚠️ Você recebeu uma advertência no servidor PAFO\n\n` +
-          `**Motivo:** ${motivo}\n` +
-          `**Staff:** <@${interaction.user.id}>\n` +
-          `**Total de advertências:** ${warnCount}/3\n\n` +
+          `**Motivo:** ${motivo}\n**Staff:** <@${interaction.user.id}>\n**Total de advertências:** ${warnCount}/3\n\n` +
           `> Você também foi silenciado por **1 hora** como consequência.\n` +
-          `> ⚠️ Na **3ª advertência** você será **banido** automaticamente.\n` +
-          `-# PAFO — Sistema de Moderação`
+          `> ⚠️ Na **3ª advertência** você será **banido** automaticamente.\n-# PAFO — Sistema de Moderação`
         ));
       await target.send({ components: [dm], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
     } catch {}
 
     await interaction.reply({ embeds: [new EmbedBuilder()
+      .setAuthor({ name: interaction.user.tag, iconURL: interaction.user.displayAvatarURL({ size: 128 }) })
       .setTitle(`⚠️ Advertência ${warnCount}/3 Aplicada`)
+      .setThumbnail(target.user.displayAvatarURL({ size: 128 }))
       .addFields(
         { name: "Membro",   value: `<@${target.id}>`, inline: true },
         { name: "Motivo",   value: motivo, inline: false },
@@ -965,7 +1077,6 @@ async function handleInteraction(interaction) {
     return;
   }
 
-  // ── /unwarn ───────────────────────────────────────────────────────────
   if (interaction.isChatInputCommand() && interaction.commandName === "unwarn") {
     const target = interaction.options.getMember("usuario");
     const motivo = interaction.options.getString("motivo") ?? "Sem motivo especificado";
@@ -992,7 +1103,9 @@ async function handleInteraction(interaction) {
     saveWarns(warns);
 
     await interaction.reply({ embeds: [new EmbedBuilder()
+      .setAuthor({ name: interaction.user.tag, iconURL: interaction.user.displayAvatarURL({ size: 128 }) })
       .setTitle("✅ Advertência Removida")
+      .setThumbnail(target.user.displayAvatarURL({ size: 128 }))
       .addFields(
         { name: "Membro",    value: `<@${target.id}>`, inline: true },
         { name: "Motivo",    value: motivo, inline: false },
@@ -1015,43 +1128,68 @@ async function handleInteraction(interaction) {
     return;
   }
 
-  // ── /kick ─────────────────────────────────────────────────────────────
   if (interaction.isChatInputCommand() && interaction.commandName === "kick") {
     const target = interaction.options.getMember("usuario");
     const motivo = interaction.options.getString("motivo") ?? "Sem motivo especificado";
 
     if (!target) return interaction.reply({ content: "❌ Membro não encontrado.", flags: MessageFlags.Ephemeral });
-    if (target.permissions.has(PermissionFlagsBits.Administrator)) {
+    if (target.permissions.has(PermissionFlagsBits.Administrator))
       return interaction.reply({ content: "❌ Não é possível expulsar um administrador.", flags: MessageFlags.Ephemeral });
-    }
-    if (target.id === interaction.user.id) {
+    if (target.id === interaction.user.id)
       return interaction.reply({ content: "❌ Você não pode se expulsar.", flags: MessageFlags.Ephemeral });
-    }
+
+    const confirmEmbed = buildConfirmEmbed({
+      emoji: "👢", title: "Confirmar Kick",
+      description: "Você tem certeza que deseja expulsar este membro?",
+      staffUser: interaction.user, targetUser: target.user,
+      targetTag: target.user.tag, targetId: target.id, motivo,
+    });
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`confirm_kick_${target.id}_${Date.now()}`).setLabel("Confirmar Kick").setStyle(ButtonStyle.Danger).setEmoji("👢"),
+      new ButtonBuilder().setCustomId("cancel_action").setLabel("Cancelar").setStyle(ButtonStyle.Secondary).setEmoji("❌"),
+    );
+
+    pendingConfirm.set(`kick_${target.id}_${interaction.user.id}`, { motivo, targetTag: target.user.tag });
+    return interaction.reply({ embeds: [confirmEmbed], components: [row], flags: MessageFlags.Ephemeral });
+  }
+
+  if (interaction.isButton() && interaction.customId.startsWith("confirm_kick_")) {
+    const parts    = interaction.customId.split("_");
+    const targetId = parts[2];
+    const key      = `kick_${targetId}_${interaction.user.id}`;
+    const stored   = pendingConfirm.get(key);
+    if (!stored) return interaction.update({ content: "⚠️ Ação expirada.", embeds: [], components: [] });
+    pendingConfirm.delete(key);
+
+    const { motivo, targetTag } = stored;
+    const target = await interaction.guild.members.fetch(targetId).catch(() => null);
 
     try {
-      await target.kick(`${motivo} | Staff: ${interaction.user.tag}`);
+      await target?.kick(`${motivo} | Staff: ${interaction.user.tag}`);
     } catch (e) {
-      return interaction.reply({ content: `❌ Erro ao expulsar: ${e.message}`, flags: MessageFlags.Ephemeral });
+      return interaction.update({ content: `❌ Erro ao expulsar: ${e.message}`, embeds: [], components: [] });
     }
 
-    await interaction.reply({ embeds: [new EmbedBuilder()
+    const resultEmbed = new EmbedBuilder()
+      .setAuthor({ name: interaction.user.tag, iconURL: interaction.user.displayAvatarURL({ size: 128 }) })
       .setTitle("👢 Membro Expulso")
+      .setThumbnail(target?.user?.displayAvatarURL({ size: 128 }) ?? null)
       .addFields(
-        { name: "Membro", value: `${target.user.tag} (\`${target.id}\`)`, inline: false },
+        { name: "Membro", value: `${targetTag} (\`${targetId}\`)`, inline: false },
         { name: "Motivo", value: motivo, inline: false },
         { name: "Staff",  value: `<@${interaction.user.id}>`, inline: true },
       )
-      .setColor(0xFFA500).setTimestamp()
-    ]});
+      .setColor(0xFFA500).setTimestamp();
 
+    await interaction.update({ embeds: [resultEmbed], components: [] });
     await logPunishment(interaction.guild, {
       tipo: "Kick Aplicado", emoji: "👢",
-      staffId: interaction.user.id, membroTag: target.user.tag, membroId: target.id, motivo
+      staffId: interaction.user.id, membroTag: targetTag, membroId: targetId, motivo
     });
     return;
   }
 
-  // ── /lock ─────────────────────────────────────────────────────────────
   if (interaction.isChatInputCommand() && interaction.commandName === "lock") {
     const canal = interaction.options.getChannel("canal") ?? interaction.channel;
     const everyoneOverwrite = canal.permissionOverwrites.cache.get(interaction.guild.roles.everyone.id);
@@ -1068,22 +1206,16 @@ async function handleInteraction(interaction) {
       return interaction.reply({ content: `❌ Erro: ${e.message}`, flags: MessageFlags.Ephemeral });
     }
 
-    await interaction.reply({ embeds: [new EmbedBuilder()
-      .setTitle("🔒 Canal Travado")
-      .setDescription(`<#${canal.id}> foi travado. Nenhum membro pode enviar mensagens.`)
-      .addFields({ name: "Staff", value: `<@${interaction.user.id}>`, inline: true })
-      .setColor(0xED4245).setTimestamp()
-    ]});
+    await interaction.reply({ content: `🔒 Canal <#${canal.id}> travado com sucesso.`, flags: MessageFlags.Ephemeral });
 
     await canal.send({ embeds: [new EmbedBuilder()
       .setTitle("🔒 Canal Travado")
-      .setDescription(`Este canal foi travado por <@${interaction.user.id}>.`)
+      .setDescription(`Este canal foi travado por <@${interaction.user.id}>. Nenhum membro pode enviar mensagens.`)
       .setColor(0xED4245).setTimestamp()
     ]}).catch(() => {});
     return;
   }
 
-  // ── /unlock ───────────────────────────────────────────────────────────
   if (interaction.isChatInputCommand() && interaction.commandName === "unlock") {
     const canal = interaction.options.getChannel("canal") ?? interaction.channel;
     const everyoneOverwrite = canal.permissionOverwrites.cache.get(interaction.guild.roles.everyone.id);
@@ -1100,12 +1232,7 @@ async function handleInteraction(interaction) {
       return interaction.reply({ content: `❌ Erro: ${e.message}`, flags: MessageFlags.Ephemeral });
     }
 
-    await interaction.reply({ embeds: [new EmbedBuilder()
-      .setTitle("🔓 Canal Destravado")
-      .setDescription(`<#${canal.id}> foi destravado. Membros podem enviar mensagens novamente.`)
-      .addFields({ name: "Staff", value: `<@${interaction.user.id}>`, inline: true })
-      .setColor(0x57F287).setTimestamp()
-    ]});
+    await interaction.reply({ content: `🔓 Canal <#${canal.id}> destravado com sucesso.`, flags: MessageFlags.Ephemeral });
 
     await canal.send({ embeds: [new EmbedBuilder()
       .setTitle("🔓 Canal Destravado")
@@ -1115,7 +1242,6 @@ async function handleInteraction(interaction) {
     return;
   }
 
-  // ── /slowmode ─────────────────────────────────────────────────────────
   if (interaction.isChatInputCommand() && interaction.commandName === "slowmode") {
     const segundos = interaction.options.getInteger("segundos");
     const canal    = interaction.options.getChannel("canal") ?? interaction.channel;
@@ -1150,7 +1276,6 @@ async function handleInteraction(interaction) {
     return;
   }
 
-  // ── Verificação ───────────────────────────────────────────────────────
   if (interaction.isButton() && interaction.customId === "verify_button") {
     if (interaction.member.roles.cache.has(VERIFIED_ROLE_ID))
       return interaction.reply({ content: "✅ Você já está verificado!", flags: MessageFlags.Ephemeral });
@@ -1191,7 +1316,6 @@ async function handleInteraction(interaction) {
     return interaction.reply({ components: [c], flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 });
   }
 
-  // ── Ticket select ─────────────────────────────────────────────────────
   if (interaction.isStringSelectMenu() && interaction.customId === "ticket_select") {
     const tipo = interaction.values[0];
     const c = new ContainerBuilder()
@@ -1219,8 +1343,6 @@ async function handleInteraction(interaction) {
   if (interaction.isButton() && interaction.customId === "ticket_cancel")
     return interaction.reply({ content: "❌ Cancelado.", flags: MessageFlags.Ephemeral });
 
-  // ── Confirmar ticket ──────────────────────────────────────────────────
-  // FIX #2: Lock por userId para evitar numeração dupla
   if (interaction.isButton() && interaction.customId.startsWith("ticket_confirm_")) {
     const tipo   = interaction.customId.replace("ticket_confirm_", "");
     const labels = { duvidas:"Dúvidas", parcerias:"Parcerias", compras:"Compras", denuncias:"Denúncias", outros:"Outros" };
@@ -1229,18 +1351,14 @@ async function handleInteraction(interaction) {
     const guild  = interaction.guild;
     const user   = interaction.user;
 
-    // FIX #2: Verifica se já existe ticket sendo aberto por este usuário
     if (ticketOpening.has(user.id))
       return interaction.reply({ content: "⏳ Já existe um ticket sendo criado. Aguarde.", flags: MessageFlags.Ephemeral });
 
     ticketOpening.add(user.id);
-
-    // Defer imediato para evitar timeout (e prevenir resposta dupla de outra instância)
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-    // FIX #2: Lock para garantir atomicidade na criação do canal
     const num  = loadTicketCount() + 1;
-    saveTicketCount(num); // salva ANTES de criar canal, evita corrida
+    saveTicketCount(num);
     const ticketName = `ticket-${String(num).padStart(4, "0")}`;
 
     const overw = [
@@ -1295,7 +1413,6 @@ async function handleInteraction(interaction) {
 
     await ticketCh.send({ components: [c], flags: MessageFlags.IsComponentsV2, allowedMentions: { parse: [] } });
 
-    // FIX #1: Log apenas no canal correto, sem duplicar
     const logTargetId = isCompra ? TICKET_LOG_CHANNEL_ID : LOG_CHANNEL_ID;
     guild.channels.cache.get(logTargetId)?.send({ embeds: [new EmbedBuilder()
       .setTitle("🎫 Ticket Aberto")
@@ -1310,7 +1427,6 @@ async function handleInteraction(interaction) {
     return;
   }
 
-  // ── Painel Staff ──────────────────────────────────────────────────────
   if (interaction.isButton() && interaction.customId.startsWith("panel_staff_")) {
     if (!isStaff(interaction.member))
       return interaction.reply({ content: "❌ Apenas a staff pode usar o Painel Staff.", flags: MessageFlags.Ephemeral });
@@ -1337,7 +1453,6 @@ async function handleInteraction(interaction) {
     return interaction.reply({ components: [c], flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 });
   }
 
-  // ── Painel Membro ─────────────────────────────────────────────────────
   if (interaction.isButton() && interaction.customId.startsWith("panel_member_")) {
     const [,, channelId, openerId] = interaction.customId.split("_");
     if (interaction.user.id !== openerId)
@@ -1360,7 +1475,6 @@ async function handleInteraction(interaction) {
     return interaction.reply({ components: [c], flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 });
   }
 
-  // ── Staff actions ─────────────────────────────────────────────────────
   if (interaction.isStringSelectMenu() && interaction.customId.startsWith("staff_action_")) {
     const [,, channelId, openerId] = interaction.customId.split("_");
     const action = interaction.values[0];
@@ -1434,7 +1548,6 @@ async function handleInteraction(interaction) {
     return interaction.reply({ content: `✅ <@${memberId}> removido!`, flags: MessageFlags.Ephemeral });
   }
 
-  // ── Member actions ────────────────────────────────────────────────────
   if (interaction.isStringSelectMenu() && interaction.customId.startsWith("member_action_")) {
     const [,, channelId, openerId] = interaction.customId.split("_");
     const action = interaction.values[0];
@@ -1452,7 +1565,6 @@ async function handleInteraction(interaction) {
     }
   }
 
-  // ── Fechar ticket ─────────────────────────────────────────────────────
   if (interaction.isButton() && interaction.customId.startsWith("ticket_close_")) {
     if (!isStaff(interaction.member))
       return interaction.reply({ content: "❌ Apenas a staff pode fechar tickets.", flags: MessageFlags.Ephemeral });
@@ -1477,12 +1589,11 @@ async function handleInteraction(interaction) {
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`));
     await ch.send({ components: [closing], flags: MessageFlags.IsComponentsV2 });
 
-    const ticketName = data?.ticketName ?? ch.name;
+    const ticketName  = data?.ticketName ?? ch.name;
     const ticketLabel = data?.label ?? "Desconhecido";
-    const claimerId  = data?.claimerId  ?? null;
-    const dateStr    = getBRT();
+    const claimerId   = data?.claimerId  ?? null;
+    const dateStr     = getBRT();
 
-    // Transcript
     let txt = `📄 TRANSCRIPT: ${ch.name}\nFechado por: ${interaction.user.tag}\n\n`;
     try {
       const msgs = await ch.messages.fetch({ limit: 100 });
@@ -1493,8 +1604,6 @@ async function handleInteraction(interaction) {
     } catch { txt += "\n⚠️ Erro ao carregar histórico."; }
     const file = new AttachmentBuilder(Buffer.from(txt, "utf-8"), { name: `transcript-${ch.name}.txt` });
 
-    // FIX #1/#7: Log de fechamento — transcript sempre vai pro LOG_CHANNEL_ID
-    // Para compras, transcript também vai pro FEEDBACK_COMPRAS_ID mais adiante via DM de avaliação
     interaction.guild.channels.cache.get(LOG_CHANNEL_ID)?.send({
       embeds: [new EmbedBuilder()
         .setTitle("🔒 Ticket Fechado")
@@ -1510,14 +1619,11 @@ async function handleInteraction(interaction) {
       files: [file]
     });
 
-    // FIX #7: DM de avaliação — fluxo unificado para todos os tipos de ticket
     if (openerId && !(data?.ratedSent)) {
       if (data) data.ratedSent = true;
       const opener = await interaction.guild.members.fetch(openerId).catch(() => null);
       if (opener) {
-        // Para tickets de compra: pede qual cargo foi comprado antes das estrelas
         if (isCompra) {
-          // FIX #7: DM de avaliação de compra com seleção de cargo + estrelas
           const cargoSelect = new StringSelectMenuBuilder()
             .setCustomId(`compra_cargo|${ticketName}|${openerId}|${claimerId ?? interaction.user.id}`)
             .setPlaceholder("Qual cargo você comprou?")
@@ -1541,7 +1647,6 @@ async function handleInteraction(interaction) {
 
           await opener.send({ components: [dmC], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
         } else {
-          // Ticket normal: vai direto para estrelas
           const dmC = buildRatingDM({
             ticketName, openerId,
             claimerId: claimerId ?? interaction.user.id,
@@ -1564,19 +1669,16 @@ async function handleInteraction(interaction) {
     return;
   }
 
-  // ── FIX #7: Seleção de cargo comprado (compras) ───────────────────────
   if (interaction.isStringSelectMenu() && interaction.customId.startsWith("compra_cargo|")) {
-    // formato: compra_cargo|TICKETNAME|OPENERID|CLAIMERID
-    const parts = interaction.customId.split("|");
+    const parts      = interaction.customId.split("|");
     const ticketName = parts[1];
     const openerId   = parts[2];
     const claimerId  = parts[3];
 
     const cargoLabel = {
-      olheiro:           "Olheiro",
-      scrim_hoster:      "Scrim Hoster",
-      pic_perm:          "Pic Perm",
-
+      olheiro:      "Olheiro",
+      scrim_hoster: "Scrim Hoster",
+      pic_perm:     "Pic Perm",
     };
     const cargoBought = cargoLabel[interaction.values[0]] ?? interaction.values[0];
 
@@ -1594,7 +1696,6 @@ async function handleInteraction(interaction) {
     return;
   }
 
-  // ── Reivindicar ticket ────────────────────────────────────────────────
   if (interaction.isButton() && interaction.customId.startsWith("ticket_claim_")) {
     if (!isStaff(interaction.member))
       return interaction.reply({ content: "❌ Apenas a staff pode reivindicar tickets.", flags: MessageFlags.Ephemeral });
@@ -1646,7 +1747,6 @@ async function handleInteraction(interaction) {
     return;
   }
 
-  // ── Free Agent helpers ─────────────────────────────────────────────────
   async function parseFa(channelId, msgId) {
     try {
       const ch  = await client.channels.fetch(channelId).catch(() => null);
@@ -1721,9 +1821,7 @@ async function handleInteraction(interaction) {
     return interaction.reply({ components: [profile], flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 });
   }
 
-  // ── FIX #7: Avaliação unificada (estrelas) — funciona para ticket normal e compras ────
   if (interaction.isButton() && interaction.customId.startsWith("rate|")) {
-    // formato: rate|TICKETNAME|OPENERID|CLAIMERID|TICKETTYPE|CARGO|NOTA
     const parts      = interaction.customId.split("|");
     const nota       = parseInt(parts[6]);
     const safeCargo  = parts[5];
@@ -1752,7 +1850,6 @@ async function handleInteraction(interaction) {
 
     const guild = await client.guilds.fetch(GUILD_ID).catch(() => null);
 
-    // FIX #7: Avaliação de compra → FEEDBACK_COMPRAS_ID | Outros → REVIEW_CHANNEL_ID
     const targetChannelId = ticketType === "Compras" ? FEEDBACK_COMPRAS_ID : REVIEW_CHANNEL_ID;
     const revCh = guild ? await guild.channels.fetch(targetChannelId).catch(() => null) : null;
 
@@ -1780,18 +1877,12 @@ async function handleInteraction(interaction) {
   }
 }
 
-// ─── FIX #7: Helper para construir a DM de avaliação com estrelas ─────
 function buildRatingDM({ ticketName, openerId, claimerId, closerId, dateStr, ticketType, cargoBought }) {
-  // Codifica ticketType para não quebrar o split por "_"
-  // customId usa | como separador para evitar conflito com _ do ticketName
-  // formato: rate|TICKETNAME|OPENERID|CLAIMERID|TICKETTYPE|CARGO|NOTA
   const safeType  = encodeURIComponent(ticketType ?? "Desconhecido");
   const safeCargo = encodeURIComponent(cargoBought ?? "null");
   const baseId = `rate|${ticketName}|${openerId}|${claimerId}|${safeType}|${safeCargo}`;
 
-  const title = cargoBought
-    ? `## 🛒 Avalie sua Compra`
-    : `## 🔒 Seu Ticket Foi Encerrado`;
+  const title = cargoBought ? `## 🛒 Avalie sua Compra` : `## 🔒 Seu Ticket Foi Encerrado`;
 
   let extraInfo = `**Ticket:** \`${ticketName}\`\n**Ticket Type:** ${ticketType}\n`;
   if (cargoBought) extraInfo += `**Cargo Comprado:** ${cargoBought}\n`;
@@ -1814,10 +1905,6 @@ function buildRatingDM({ ticketName, openerId, claimerId, closerId, dateStr, tic
       new ButtonBuilder().setCustomId(`${baseId}|5`).setLabel("⭐ 5").setStyle(ButtonStyle.Success)
     ));
 }
-
-// ══════════════════════════════════════════════════════════════════════
-//  Funções de comando
-// ══════════════════════════════════════════════════════════════════════
 
 async function sendWelcome(channel, member) {
   const icon = member.guild.iconURL({ size: 1024 }) ?? SERVER_ICON;
