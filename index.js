@@ -27,8 +27,8 @@ import {
   SlashCommandBuilder,
 } from "discord.js";
 
-const TOKEN     = process.env.TOKEN;
-const CLIENT_ID = process.env.CLIENT_ID ?? "";
+const TOKEN                 = process.env.TOKEN;
+const CLIENT_ID             = process.env.CLIENT_ID ?? "";
 
 const VERIFIED_ROLE_ID      = "1464623361626734637";
 const WELCOME_CHANNEL_ID    = "1449067457082949752";
@@ -42,13 +42,15 @@ const PUNITIONS_CHANNEL_ID  = "1450094761452109948";
 const SCOUTING_CHANNEL_ID   = "1475890932162367529";
 const FEEDBACK_COMPRAS_ID   = "1462499290810286254";
 const TICKET_LOG_CHANNEL_ID = "1449525327175880865";
+const PARCERIA_CHANNEL_ID   = "1449071892873871522";
+const FREELINKS_CHANNEL_ID  = "1449112362912186389";
+const LEAGUES_CHANNEL_ID    = "1449070133778714738";
+const PENEIRA_CHANNEL_ID    = "1475542500180754523";
+const GENERAL_CHANNEL_ID    = "1449061779882901636";
 const APPEAL_SERVER         = "https://discord.gg/hvQ8x9JwyB";
 
 const STAFF_ROLES = ["1449062440183664701","1449064374177104074","1454100805496868906"];
 const SERVER_ICON = "https://cdn.discordapp.com/icons/1449061779060687063/ecbd3ce76f39128b1ec08154e7faff75.png?size=2048";
-const PARCERIA_CHANNEL_ID   = "1449071892873871522";
-const FREELINKS_CHANNEL_ID  = "1449112362912186389";
-const LEAGUES_CHANNEL_ID    = "1449070133778714738";
 
 const WARN_ROLES = [
   "1453806335996203050",
@@ -78,10 +80,116 @@ const EMOJI_FREE_CHANNELS = new Set([
   FREELINKS_CHANNEL_ID,
 ]);
 
+const DROPS_QUESTIONS = [
+  { q: "Que ano nasceu o Lula?", a: ["1945"] },
+  { q: "Qual a capital do Brasil?", a: ["brasilia", "brasília"] },
+  { q: "Em que ano o Roblox foi lançado?", a: ["2006"] },
+  { q: "Qual o nome do criador do Roblox?", a: ["david baszucki", "david"] },
+  { q: "Quantos títulos de Copa do Mundo o Brasil tem?", a: ["5", "cinco", "penta"] },
+  { q: "Quem pintou a Mona Lisa?", a: ["da vinci", "leonardo", "leonardo da vinci"] },
+  { q: "Qual o maior planeta do sistema solar?", a: ["jupiter", "júpiter"] },
+  { q: "Quantos estados tem o Brasil?", a: ["26"] },
+  { q: "Qual a moeda oficial do Japão?", a: ["iene", "yen"] },
+  { q: "Quem descobriu o Brasil?", a: ["pedro alvares cabral", "cabral"] },
+  { q: "Quantos continentes existem?", a: ["6", "seis"] },
+  { q: "Qual o metal cujo símbolo químico é Au?", a: ["ouro"] },
+  { q: "Em que ano começou a Segunda Guerra Mundial?", a: ["1939"] },
+  { q: "Qual o menor país do mundo?", a: ["vaticano"] },
+  { q: "Quem escreveu Dom Quixote?", a: ["miguel de cervantes", "cervantes"] },
+  { q: "Quantos ossos tem o corpo humano adulto?", a: ["206"] },
+  { q: "Qual o gás que as plantas absorvem na fotossíntese?", a: ["gas carbonico", "dióxido de carbono", "co2"] },
+  { q: "Qual a cor da esmeralda?", a: ["verde"] },
+  { q: "Qual a montanha mais alta do mundo?", a: ["everest", "monte everest"] },
+  { q: "Qual oceano banha o Brasil?", a: ["atlantico", "atlântico"] },
+  { q: "Qual animal é conhecido como o rei da selva?", a: ["leao", "leão"] },
+  { q: "Em qual continente fica o Egito?", a: ["africa", "áfrica"] },
+  { q: "Quantas patas tem uma aranha?", a: ["8", "oito"] },
+  { q: "Qual é o idioma mais falado no mundo?", a: ["mandarim", "ingles", "inglês"] },
+  { q: "Qual instrumento musical tem teclas pretas e brancas?", a: ["piano", "teclado"] },
+  { q: "Quem foi o primeiro homem a pisar na lua?", a: ["neil armstrong", "armstrong"] },
+  { q: "Qual é a raiz quadrada de 144?", a: ["12", "doze"] },
+  { q: "Qual o maior mamífero terrestre?", a: ["elefante"] },
+  { q: "Em que ano o homem pisou na lua?", a: ["1969"] },
+  { q: "Qual é o nome da galáxia em que vivemos?", a: ["via lactea", "via láctea"] },
+  { q: "Quem é o autor de 'O Senhor dos Anéis'?", a: ["tolkien", "j.r.r. tolkien"] },
+  { q: "Qual a capital da França?", a: ["paris"] },
+  { q: "Qual a fórmula química da água?", a: ["h2o"] },
+  { q: "Qual o planeta mais próximo do Sol?", a: ["mercurio", "mercúrio"] },
+  { q: "Em que país fica a Torre Eiffel?", a: ["franca", "frança"] },
+  { q: "Quantos dias tem um ano bissexto?", a: ["366"] },
+  { q: "Qual o símbolo químico do oxigênio?", a: ["o"] },
+  { q: "Qual esporte o Pelé jogava?", a: ["futebol"] },
+  { q: "Qual o nome do evento em que a bola passa a linha do gol?", a: ["gol"] },
+  { q: "Quantos jogadores tem um time de futebol em campo?", a: ["11", "onze"] },
+  { q: "Qual país venceu a Copa do Mundo de 2014?", a: ["alemanha"] },
+  { q: "Em que estado fica a cidade de São Paulo?", a: ["sao paulo", "sp"] },
+  { q: "Qual o maior oceano do mundo?", a: ["pacifico", "pacífico"] },
+  { q: "Qual a capital dos Estados Unidos?", a: ["washington", "washington dc"] },
+  { q: "Quem é conhecido como o Rei do Pop?", a: ["michael jackson"] },
+  { q: "Qual o resultado de 8x8?", a: ["64"] },
+  { q: "Quem escreveu 'Romeu e Julieta'?", a: ["shakespeare", "william shakespeare"] },
+  { q: "Quantos segundos tem um minuto?", a: ["60", "sessenta"] },
+  { q: "Qual a cor do cavalo branco de Napoleão?", a: ["branco"] },
+  { q: "Quantas horas tem um dia?", a: ["24", "vinte e quatro"] },
+  { q: "Em qual país se originou o sushi?", a: ["japao", "japão"] },
+  { q: "Qual o oposto de claro?", a: ["escuro"] },
+  { q: "Qual a temperatura em que a água ferve (em graus Celsius)?", a: ["100"] },
+  { q: "Qual é o primeiro mês do ano?", a: ["janeiro"] },
+  { q: "Que animal produz mel?", a: ["abelha"] },
+  { q: "Qual é o coletivo de cães?", a: ["matilha"] },
+  { q: "Quantos milímetros há em um centímetro?", a: ["10", "dez"] },
+  { q: "Qual a cor do sangue humano?", a: ["vermelho", "vermelha"] },
+  { q: "Onde se localiza o Cristo Redentor?", a: ["rio de janeiro", "rj"] },
+  { q: "Qual é a estação mais quente do ano?", a: ["verao", "verão"] },
+  { q: "Como se chama o satélite natural da Terra?", a: ["lua"] },
+  { q: "Quem fundou a Microsoft?", a: ["bill gates"] },
+  { q: "Que fruta é conhecida por manter os médicos afastados?", a: ["maca", "maçã"] },
+  { q: "Qual é a língua oficial do Brasil?", a: ["portugues", "português"] },
+  { q: "Em que ano a pandemia de COVID-19 começou?", a: ["2019", "2020"] },
+  { q: "Qual a soma de 15 e 25?", a: ["40", "quarenta"] },
+  { q: "Que letra vem depois de 'K'?", a: ["l"] },
+  { q: "Qual é a capital da Argentina?", a: ["buenos aires"] },
+  { q: "O que significa a sigla ONU?", a: ["organizacao das nacoes unidas", "organização das nações unidas"] },
+  { q: "Em qual oceano afundou o Titanic?", a: ["atlantico", "atlântico"] },
+  { q: "Quantas sílabas tem a palavra 'paralelepípedo'?", a: ["7", "sete"] },
+  { q: "Em que estado do Brasil fica o Pelourinho?", a: ["bahia", "ba"] },
+  { q: "Qual time espanhol tem mais títulos da Champions League?", a: ["real madrid"] },
+  { q: "Qual a cidade com mais habitantes no mundo?", a: ["toquio", "tóquio"] },
+  { q: "Em qual continente fica a Austrália?", a: ["oceania"] },
+  { q: "O que os pandas mais comem?", a: ["bambu"] },
+  { q: "Quantos anos durou a Guerra dos Cem Anos?", a: ["116"] },
+  { q: "Qual é o país mais populoso do mundo?", a: ["india", "índia", "china"] },
+  { q: "Como se chama a figura geométrica de 3 lados?", a: ["triangulo", "triângulo"] },
+  { q: "Quantos minutos tem meia hora?", a: ["30", "trinta"] },
+  { q: "Qual elemento químico tem o símbolo Fe?", a: ["ferro"] },
+  { q: "Que inventor brasileiro desenvolveu o 14-Bis?", a: ["santos dumont"] },
+  { q: "Qual o estado da água no formato de gelo?", a: ["solido", "sólido"] },
+  { q: "Qual a cor que se obtém misturando azul e amarelo?", a: ["verde"] },
+  { q: "Em qual esporte se usa raquete e peteca?", a: ["badminton"] },
+  { q: "Qual o maior estado do Brasil em extensão territorial?", a: ["amazonas"] },
+  { q: "Em qual continente encontramos as pirâmides de Gizé?", a: ["africa", "áfrica"] },
+  { q: "Quem é o mascote da SEGA?", a: ["sonic"] },
+  { q: "Qual console de videogame mais vendido de todos os tempos?", a: ["ps2", "playstation 2"] },
+  { q: "Quem é o encanador mais famoso do mundo dos games?", a: ["mario", "super mario"] },
+  { q: "Qual a moeda virtual do Roblox?", a: ["robux"] },
+  { q: "No jogo Minecraft, de que material é feita a primeira picareta?", a: ["madeira"] },
+  { q: "Em que cidade o Batman atua?", a: ["gotham", "gotham city"] },
+  { q: "Que herói perdeu os pais e foi criado pelo Tio Ben?", a: ["homem aranha", "spider man"] },
+  { q: "Qual a cor do sabre de luz do Darth Vader?", a: ["vermelho"] },
+  { q: "Como se chama a mãe do Naruto?", a: ["kushina"] },
+  { q: "Que animal de estimação é o Tom, do desenho Tom e Jerry?", a: ["gato"] },
+  { q: "Em Harry Potter, qual casa tem as cores vermelho e dourado?", a: ["grifinoria", "grifinória"] },
+  { q: "Qual super-herói tem um escudo de Vibranium?", a: ["capitao america", "capitão américa"] },
+  { q: "Em que jogo existe a cidade de Los Santos?", a: ["gta v", "gta", "grand theft auto"] },
+  { q: "Quantos anos tem um século?", a: ["100", "cem"] }
+];
+
+let dropActive = false;
+
 import { createServer } from "net";
 const lockServer = createServer();
 lockServer.on("error", () => {
-  console.error("❌ Bot já está rodando! Feche a instância anterior.");
+  console.error("❌ Bot já está rodando! Feche a instância anterior ou limpe as portas do host.");
   process.exit(1);
 });
 lockServer.listen(19876, "127.0.0.1");
@@ -103,7 +211,71 @@ client.once("ready", async () => {
   checkTempRoles();
   setInterval(checkTempRoles, 60_000);
   setInterval(checkStaleTickets, 5 * 60_000);
+  triggerDrop();
+  setInterval(triggerDrop, 2 * 60 * 60 * 1000);
 });
+
+async function triggerDrop() {
+  if (dropActive) return;
+  const brtTime = new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo", hour12: false });
+  const brtHour = new Date(brtTime).getHours();
+  if (brtHour < 10) return; 
+
+  const guild = client.guilds.cache.get(GUILD_ID);
+  if (!guild) return;
+  const channel = guild.channels.cache.get(GENERAL_CHANNEL_ID);
+  if (!channel) return;
+
+  dropActive = true;
+  const item = DROPS_QUESTIONS[Math.floor(Math.random() * DROPS_QUESTIONS.length)];
+
+  const c = new ContainerBuilder()
+    .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(BANNERS.booster)))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🎁 DROP RÁPIDO!\n\n> **${item.q}**\n\nResponda no chat em até **1 minuto** para ganhar um cargo VIP!\n*(Olheiro [5 Dias], Scrim Hoster ou Pic Perm)*`))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Drops System`));
+
+  await channel.send({ content: "@here", components: [c], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+
+  const filter = m => !m.author.bot;
+  const collector = channel.createMessageCollector({ filter, time: 60000 });
+
+  collector.on("collect", async m => {
+    const answer = m.content.toLowerCase().trim();
+    if (item.a.some(ans => answer.includes(ans))) {
+      collector.stop("winner");
+      const winC = new ContainerBuilder()
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🎉 TEMOS UM VENCEDOR!\n\nParabéns <@${m.author.id}>! Você acertou a resposta e ganhou o drop!\nVerifique suas DMs para escolher seu prêmio.`))
+        .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Drops System`));
+      await channel.send({ components: [winC], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+
+const dmSelect = new StringSelectMenuBuilder()
+  .setCustomId(`drop_claim_${m.author.id}`)
+  .setPlaceholder("Escolha seu cargo VIP (Válido por 5 dias)")
+  .addOptions(
+    new StringSelectMenuOptionBuilder().setLabel("Olheiro (5 Dias)").setValue("1449070067131224268").setEmoji("🔍"),
+    new StringSelectMenuOptionBuilder().setLabel("Scrim Hoster (5 Dias)").setValue("1449070133040517262").setEmoji("⚔️"),
+    new StringSelectMenuOptionBuilder().setLabel("Pic Perm (5 Dias)").setValue("1450118477179260948").setEmoji("📸")
+  );
+      const dmC = new ContainerBuilder()
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🎁 Você Venceu o Drop!\n\nVocê respondeu corretamente no chat e garantiu seu prêmio. Escolha abaixo qual cargo você deseja receber no servidor:`))
+        .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Drops System`))
+        .addActionRowComponents(new ActionRowBuilder().addComponents(dmSelect));
+
+      await m.author.send({ components: [dmC], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+    }
+  });
+
+  collector.on("end", (collected, reason) => {
+    dropActive = false;
+    if (reason !== "winner") {
+      const failC = new ContainerBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(`### ⏰ O tempo esgotou!\n> Ninguém acertou o drop desta vez. A resposta era: **${item.a[0]}**`));
+      channel.send({ components: [failC], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+    }
+  });
+}
 
 async function registerSlashCommands() {
   if (!CLIENT_ID) { console.warn("⚠️ CLIENT_ID não definido."); return; }
@@ -342,11 +514,16 @@ function getSpam(userId) {
   return spamTracker.get(userId);
 }
 
+function isStaff(member) {
+  if (!member) return false;
+  return STAFF_ROLES.some(id => member.roles.cache.has(id)) || member.permissions.has(PermissionFlagsBits.Administrator);
+}
+
 async function handleAntiSpam(message) {
   if (message.author.bot || !message.guild) return false;
   const member = message.member;
   if (!member) return false;
-  if (member.permissions.has(PermissionFlagsBits.Administrator) || isStaff(member)) return false;
+  if (isStaff(member)) return false;
 
   const now     = Date.now();
   const content = message.content ?? "";
@@ -453,14 +630,41 @@ client.on("guildMemberAdd", async (member) => {
 client.on("messageCreate", async (message) => {
   if (message.author.bot || !message.guild) return;
 
+  const member = message.member;
+
+  if (message.channel.id === PENEIRA_CHANNEL_ID && !isStaff(member)) {
+    if (!message.content.includes("roblox.com/")) {
+      await message.delete().catch(() => {});
+      const w = await message.channel.send(`<@${message.author.id}> ❌ Neste canal, você só pode enviar mensagens que contenham um link do Roblox.`).catch(() => null);
+      if (w) setTimeout(() => w.delete().catch(() => {}), 10000);
+      return;
+    }
+  }
+
+  if (/(tiktok\.com|vt\.tiktok\.com)/i.test(message.content) && !isStaff(member)) {
+    await message.delete().catch(() => {});
+    const w = await message.channel.send(`<@${message.author.id}> ❌ Links do TikTok não são permitidos neste servidor.`).catch(() => null);
+    if (w) setTimeout(() => w.delete().catch(() => {}), 8000);
+    const logCh = message.guild.channels.cache.get(LOG_CHANNEL_ID);
+    if (logCh) {
+      const logMsg = new ContainerBuilder()
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+          `### 📝 Mensagem deletada — Link TikTok\n` +
+          `**Usuário:** <@${message.author.id}>\n` +
+          `**Canal:** <#${message.channel.id}>\n` +
+          `**Conteúdo:**\n\`\`\`\n${message.content.slice(0, 500)}\n\`\`\``
+        ));
+      await logCh.send({ components: [logMsg], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+    }
+    return;
+  }
+
   const blocked = await handleAntiSpam(message);
   if (blocked) return;
 
   const inviteRegex = /discord(?:\.gg|app\.com\/invite|\.com\/invite)\/[a-zA-Z0-9]+/i;
-  const member = message.member;
   if (inviteRegex.test(message.content) && member) {
-    const isAdmin = member.permissions.has(PermissionFlagsBits.Administrator);
-    if (!isAdmin) {
+    if (!isStaff(member)) {
       const allowedChannels = [FREEAGENT_CHANNEL_ID, SCOUTING_CHANNEL_ID, PARCERIA_CHANNEL_ID, FREELINKS_CHANNEL_ID, LEAGUES_CHANNEL_ID];
       const isTicketChannel = message.channel.name?.startsWith("ticket-");
       if (!allowedChannels.includes(message.channel.id) && !isTicketChannel) {
@@ -493,7 +697,7 @@ client.on("messageCreate", async (message) => {
     }
   }
 
-  if (message.channel.id === FREEAGENT_CHANNEL_ID && !member?.permissions.has(PermissionFlagsBits.Administrator) && !isStaff(member)) {
+  if (message.channel.id === FREEAGENT_CHANNEL_ID && !isStaff(member)) {
     if (!message.content.trim().toLowerCase().startsWith("!freeagent")) {
       const content = message.content.trim();
       if (content.length >= 3) {
@@ -572,7 +776,7 @@ client.on("messageCreate", async (message) => {
   handled.add(message.id);
   setTimeout(() => handled.delete(message.id), 10_000);
 
-  if (!member?.permissions.has(PermissionFlagsBits.Administrator)) return;
+  if (!isStaff(member)) return;
 
   const content = message.content.trim().toLowerCase();
   const cmds = [
@@ -616,8 +820,8 @@ client.on("messageDelete", async (message) => {
   if (!message.content && message.attachments.size === 0) return;
 
   const authorTag  = message.author?.tag ?? "Desconhecido";
-  const authorId   = message.author?.id  ?? "?";
-  const channelId  = message.channel?.id ?? "?";
+  const authorId   = message.author?.id  ?? "Desconhecido";
+  const channelId  = message.channel?.id ?? "Desconhecido";
   const content    = message.content ? message.content.slice(0, 1000) : "[sem texto]";
   const avatarURL  = message.author?.displayAvatarURL({ size: 128 }) ?? null;
 
@@ -654,8 +858,8 @@ client.on("messageUpdate", async (oldMessage, newMessage) => {
   if (!logCh) return;
 
   const authorTag = newMessage.author?.tag ?? "Desconhecido";
-  const authorId  = newMessage.author?.id  ?? "?";
-  const channelId = newMessage.channel?.id ?? "?";
+  const authorId  = newMessage.author?.id  ?? "Desconhecido";
+  const channelId = newMessage.channel?.id ?? "Desconhecido";
   const avatarURL = newMessage.author?.displayAvatarURL({ size: 128 }) ?? null;
 
   const oldContent = oldMessage.content ? oldMessage.content.slice(0, 500) : "[não disponível]";
@@ -703,10 +907,6 @@ async function classifyFreeAgentMessage(content) {
   }
 }
 
-function isStaff(member) {
-  return STAFF_ROLES.some(id => member.roles.cache.has(id)) || member.permissions.has(PermissionFlagsBits.Administrator);
-}
-
 async function logPunishment(guild, { tipo, emoji, staffId, membroTag, membroId, motivo, extra = "" }) {
   const punCh = guild.channels.cache.get(PUNITIONS_CHANNEL_ID);
   if (!punCh) return;
@@ -742,19 +942,14 @@ async function logPunishment(guild, { tipo, emoji, staffId, membroTag, membroId,
   await punCh.send({ embeds: [embed] }).catch(() => {});
 }
 
-function buildConfirmEmbed({ emoji, title, description, staffUser, targetUser, targetTag, targetId, motivo, extra }) {
-  const embed = new EmbedBuilder()
-    .setAuthor({ name: staffUser.tag, iconURL: staffUser.displayAvatarURL({ size: 128 }) })
-    .setTitle(`${emoji} ${title}`)
-    .setDescription(description ?? "")
-    .addFields(
-      { name: "Alvo", value: targetTag ? `${targetTag} (\`${targetId}\`)` : `<@${targetId}>`, inline: false },
-      { name: "Motivo", value: motivo ?? "Sem motivo", inline: false },
-    );
-  if (extra) embed.addFields({ name: "Info", value: extra, inline: false });
-  if (targetUser) embed.setThumbnail(targetUser.displayAvatarURL?.({ size: 128 }) ?? null);
-  embed.setColor(0xFEE75C).setTimestamp().setFooter({ text: "Confirme a ação abaixo", iconURL: SERVER_ICON });
-  return embed;
+function buildConfirmContainer({ emoji, title, description, targetId, motivo, extra }) {
+  let text = `## ${emoji} ${title}\n\n${description}\n\n**Alvo:** <@${targetId}>\n**Motivo:** ${motivo ?? "Sem motivo"}`;
+  if (extra) text += `\n**Extra:** ${extra}`;
+  
+  return new ContainerBuilder()
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(text))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Sistema de Moderação`));
 }
 
 client.on("interactionCreate", (i) => handleInteraction(i).catch(e => {
@@ -763,6 +958,60 @@ client.on("interactionCreate", (i) => handleInteraction(i).catch(e => {
 }));
 
 async function handleInteraction(interaction) {
+
+  // --- SISTEMA DE RESGATE DE DROP (TODOS TEMPORÁRIOS) ---
+  if (interaction.isStringSelectMenu() && interaction.customId.startsWith("drop_claim_")) {
+    const userId = interaction.customId.replace("drop_claim_", "");
+    if (interaction.user.id !== userId) return interaction.reply({ content: "❌ Este drop não é seu.", flags: MessageFlags.Ephemeral });
+
+    await interaction.deferUpdate();
+    const roleId = interaction.values[0];
+    
+    const guild = await client.guilds.fetch(GUILD_ID).catch(() => null);
+    if (!guild) return;
+    const member = await guild.members.fetch(userId).catch(() => null);
+    if (!member) return;
+
+    try {
+      // 1. Adiciona o cargo ao membro
+      await member.roles.add(roleId);
+
+      // 2. Regista no sistema temporário (5 dias)
+      const dias = 5;
+      const expiresAt = Date.now() + dias * 86_400_000; // 5 dias em milissegundos
+      
+      // Carrega os dados atuais e remove entradas antigas do mesmo utilizador para esse cargo
+      const data = loadTempRoles().filter(e => !(e.userId === userId && e.roleId === roleId));
+      
+      data.push({ 
+        userId, 
+        roleId, 
+        guildId: GUILD_ID, 
+        expiresAt, 
+        days: dias 
+      });
+      
+      saveTempRoles(data);
+
+      // 3. Resposta de confirmação
+      const confirmC = new ContainerBuilder()
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+          `## ✅ Drop Resgatado com Sucesso!\n\n` +
+          `Você recebeu o cargo <@&${roleId}>.\n` +
+          `> ⏳ **Duração:** 5 dias\n` +
+          `> ⚠️ O cargo será removido automaticamente após esse período.`
+        ))
+        .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Drops System`));
+      
+      await interaction.message.edit({ components: [confirmC], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+
+    } catch (error) {
+      console.error("Erro ao entregar cargo de drop:", error);
+      await interaction.followUp({ content: "Houve um erro ao tentar entregar o seu cargo. Contacte um administrador.", flags: MessageFlags.Ephemeral });
+    }
+    return;
+  }
 
   if (interaction.isChatInputCommand() && interaction.commandName === "setroletemp") {
     if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator))
@@ -824,21 +1073,20 @@ async function handleInteraction(interaction) {
       return interaction.reply({ content: "❌ Não é possível banir um administrador.", flags: MessageFlags.Ephemeral });
     }
 
-    const confirmEmbed = buildConfirmEmbed({
+    const c = buildConfirmContainer({
       emoji: "🔨", title: "Confirmar Banimento",
       description: "Você tem certeza que deseja banir este usuário?",
-      staffUser: interaction.user, targetUser: target,
-      targetTag: target.tag, targetId: target.id,
-      motivo, extra: dias > 0 ? `Deletar mensagens dos últimos ${dias} dia(s)` : null,
+      targetId: target.id, motivo,
+      extra: dias > 0 ? `Deletar mensagens dos últimos ${dias} dia(s)` : null,
     });
-
-    const row = new ActionRowBuilder().addComponents(
+    
+    c.addActionRowComponents(new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(`confirm_ban_${target.id}_${dias}_${Date.now()}`).setLabel("Confirmar Ban").setStyle(ButtonStyle.Danger).setEmoji("🔨"),
       new ButtonBuilder().setCustomId("cancel_action").setLabel("Cancelar").setStyle(ButtonStyle.Secondary).setEmoji("❌"),
-    );
+    ));
 
     pendingConfirm.set(`ban_${target.id}_${interaction.user.id}`, { motivo, dias, targetTag: target.tag });
-    return interaction.reply({ embeds: [confirmEmbed], components: [row], flags: MessageFlags.Ephemeral });
+    return interaction.reply({ components: [c], flags: MessageFlags.IsComponentsV2 });
   }
 
   if (interaction.isButton() && interaction.customId.startsWith("confirm_ban_")) {
@@ -847,7 +1095,7 @@ async function handleInteraction(interaction) {
     const dias     = parseInt(parts[3]) || 0;
     const key      = `ban_${targetId}_${interaction.user.id}`;
     const stored   = pendingConfirm.get(key);
-    if (!stored) return interaction.update({ content: "⚠️ Ação expirada.", embeds: [], components: [] });
+    if (!stored) return interaction.update({ content: "⚠️ Ação expirada ou você não tem permissão para confirmar.", embeds: [], components: [] });
     pendingConfirm.delete(key);
 
     const { motivo, targetTag } = stored;
@@ -870,19 +1118,14 @@ async function handleInteraction(interaction) {
       return interaction.update({ content: `❌ Erro ao banir: ${e.message}`, embeds: [], components: [] });
     }
 
-    const resultEmbed = new EmbedBuilder()
-      .setAuthor({ name: interaction.user.tag, iconURL: interaction.user.displayAvatarURL({ size: 128 }) })
-      .setTitle("🔨 Usuário Banido")
-      .setThumbnail(target?.user?.displayAvatarURL({ size: 128 }) ?? null)
-      .addFields(
-        { name: "Usuário", value: `${targetTag} (\`${targetId}\`)`, inline: false },
-        { name: "Motivo",  value: motivo, inline: false },
-        { name: "Staff",   value: `<@${interaction.user.id}>`, inline: true },
-        { name: "Data",    value: getBRT(), inline: true },
-      )
-      .setColor(0xED4245).setFooter({ text: `ID: ${targetId}` }).setTimestamp();
+    const resultC = new ContainerBuilder()
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+        `## 🔨 Usuário Banido\n\n**Usuário:** <@${targetId}> (\`${targetId}\`)\n**Motivo:** ${motivo}\n**Staff:** <@${interaction.user.id}>`
+      ))
+      .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# Data: ${getBRT()}`));
 
-    await interaction.update({ embeds: [resultEmbed], components: [] });
+    await interaction.update({ components: [resultC], flags: MessageFlags.IsComponentsV2 });
     await logPunishment(interaction.guild, {
       tipo: "Banimento Aplicado!", emoji: "🔨",
       staffId: interaction.user.id, membroTag: targetTag, membroId: targetId, motivo
@@ -948,21 +1191,20 @@ async function handleInteraction(interaction) {
       return interaction.reply({ content: "❌ Não é possível silenciar um administrador.", flags: MessageFlags.Ephemeral });
     }
 
-    const confirmEmbed = buildConfirmEmbed({
+    const c = buildConfirmContainer({
       emoji: "🔇", title: "Confirmar Silenciamento",
       description: "Você tem certeza que deseja silenciar este membro?",
-      staffUser: interaction.user, targetUser: target.user,
-      targetTag: target.user.tag, targetId: target.id,
-      motivo, extra: `Duração: **${minutos} minuto(s)**`,
+      targetId: target.id, motivo,
+      extra: `Duração: **${minutos} minuto(s)**`,
     });
-
-    const row = new ActionRowBuilder().addComponents(
+    
+    c.addActionRowComponents(new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(`confirm_mute_${target.id}_${minutos}_${Date.now()}`).setLabel("Confirmar Mute").setStyle(ButtonStyle.Danger).setEmoji("🔇"),
       new ButtonBuilder().setCustomId("cancel_action").setLabel("Cancelar").setStyle(ButtonStyle.Secondary).setEmoji("❌"),
-    );
+    ));
 
     pendingConfirm.set(`mute_${target.id}_${interaction.user.id}`, { motivo, minutos, targetTag: target.user.tag });
-    return interaction.reply({ embeds: [confirmEmbed], components: [row], flags: MessageFlags.Ephemeral });
+    return interaction.reply({ components: [c], flags: MessageFlags.IsComponentsV2 });
   }
 
   if (interaction.isButton() && interaction.customId.startsWith("confirm_mute_")) {
@@ -971,7 +1213,7 @@ async function handleInteraction(interaction) {
     const minutos  = parseInt(parts[3]);
     const key      = `mute_${targetId}_${interaction.user.id}`;
     const stored   = pendingConfirm.get(key);
-    if (!stored) return interaction.update({ content: "⚠️ Ação expirada.", embeds: [], components: [] });
+    if (!stored) return interaction.update({ content: "⚠️ Ação expirada ou sem permissão.", embeds: [], components: [] });
     pendingConfirm.delete(key);
 
     const { motivo, targetTag } = stored;
@@ -983,19 +1225,14 @@ async function handleInteraction(interaction) {
       return interaction.update({ content: `❌ Erro ao silenciar: ${e.message}`, embeds: [], components: [] });
     }
 
-    const resultEmbed = new EmbedBuilder()
-      .setAuthor({ name: interaction.user.tag, iconURL: interaction.user.displayAvatarURL({ size: 128 }) })
-      .setTitle("🔇 Membro Silenciado")
-      .setThumbnail(target?.user?.displayAvatarURL({ size: 128 }) ?? null)
-      .addFields(
-        { name: "Membro",  value: `<@${targetId}>`, inline: true },
-        { name: "Duração", value: `${minutos} minuto(s)`, inline: true },
-        { name: "Motivo",  value: motivo, inline: false },
-        { name: "Staff",   value: `<@${interaction.user.id}>`, inline: true },
-      )
-      .setColor(0xFEE75C).setTimestamp();
+    const resultC = new ContainerBuilder()
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+        `## 🔇 Membro Silenciado\n\n**Membro:** <@${targetId}>\n**Duração:** ${minutos} minuto(s)\n**Motivo:** ${motivo}\n**Staff:** <@${interaction.user.id}>`
+      ))
+      .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# Data: ${getBRT()}`));
 
-    await interaction.update({ embeds: [resultEmbed], components: [] });
+    await interaction.update({ components: [resultC], flags: MessageFlags.IsComponentsV2 });
     await logPunishment(interaction.guild, {
       tipo: "Silenciamento aplicado", emoji: "🔇",
       staffId: interaction.user.id, membroTag: targetTag, membroId: targetId,
@@ -1078,17 +1315,15 @@ async function handleInteraction(interaction) {
         await target.send({ components: [dm], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
       } catch {}
       await interaction.guild.members.ban(target.id, { reason: `3ª Advertência: ${motivo} | Staff: ${interaction.user.tag}` }).catch(() => {});
-      await interaction.reply({ embeds: [new EmbedBuilder()
-        .setAuthor({ name: interaction.user.tag, iconURL: interaction.user.displayAvatarURL({ size: 128 }) })
-        .setTitle("🔨 3ª Advertência — Banimento Aplicado")
-        .setThumbnail(target.user.displayAvatarURL({ size: 128 }))
-        .addFields(
-          { name: "Membro", value: `<@${target.id}>`, inline: true },
-          { name: "Motivo", value: motivo, inline: false },
-          { name: "Staff",  value: `<@${interaction.user.id}>`, inline: true },
-        )
-        .setColor(0xED4245).setTimestamp()
-      ]});
+      
+      const c = new ContainerBuilder()
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+          `## 🔨 3ª Advertência — Banimento Aplicado\n\n**Membro:** <@${target.id}>\n**Motivo:** ${motivo}\n**Staff:** <@${interaction.user.id}>`
+        ))
+        .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# Data: ${getBRT()}`));
+      await interaction.reply({ components: [c], flags: MessageFlags.IsComponentsV2 });
+
       await logPunishment(interaction.guild, {
         tipo: "Banimento Aplicado! (3ª Adv)", emoji: "🔨",
         staffId: interaction.user.id, membroTag: target.user.tag, membroId: target.id,
@@ -1117,18 +1352,13 @@ async function handleInteraction(interaction) {
       await target.send({ components: [dm], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
     } catch {}
 
-    await interaction.reply({ embeds: [new EmbedBuilder()
-      .setAuthor({ name: interaction.user.tag, iconURL: interaction.user.displayAvatarURL({ size: 128 }) })
-      .setTitle(`⚠️ Advertência ${warnCount}/3 Aplicada`)
-      .setThumbnail(target.user.displayAvatarURL({ size: 128 }))
-      .addFields(
-        { name: "Membro",   value: `<@${target.id}>`, inline: true },
-        { name: "Motivo",   value: motivo, inline: false },
-        { name: "Staff",    value: `<@${interaction.user.id}>`, inline: true },
-        { name: "Total",    value: `${warnCount}/3 advertência(s)`, inline: true },
-      )
-      .setColor(0xFF6B35).setTimestamp()
-    ]});
+    const c = new ContainerBuilder()
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+        `## ⚠️ Advertência ${warnCount}/3 Aplicada\n\n**Membro:** <@${target.id}>\n**Motivo:** ${motivo}\n**Staff:** <@${interaction.user.id}>\n**Total:** ${warnCount}/3 advertência(s)`
+      ))
+      .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# Data: ${getBRT()}`));
+    await interaction.reply({ components: [c], flags: MessageFlags.IsComponentsV2 });
 
     await logPunishment(interaction.guild, {
       tipo: "Advertência Aplicada", emoji: "⚠️",
@@ -1199,20 +1429,19 @@ async function handleInteraction(interaction) {
     if (target.id === interaction.user.id)
       return interaction.reply({ content: "❌ Você não pode se expulsar.", flags: MessageFlags.Ephemeral });
 
-    const confirmEmbed = buildConfirmEmbed({
+    const c = buildConfirmContainer({
       emoji: "👢", title: "Confirmar Kick",
       description: "Você tem certeza que deseja expulsar este membro?",
-      staffUser: interaction.user, targetUser: target.user,
-      targetTag: target.user.tag, targetId: target.id, motivo,
+      targetId: target.id, motivo,
     });
-
-    const row = new ActionRowBuilder().addComponents(
+    
+    c.addActionRowComponents(new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(`confirm_kick_${target.id}_${Date.now()}`).setLabel("Confirmar Kick").setStyle(ButtonStyle.Danger).setEmoji("👢"),
       new ButtonBuilder().setCustomId("cancel_action").setLabel("Cancelar").setStyle(ButtonStyle.Secondary).setEmoji("❌"),
-    );
+    ));
 
     pendingConfirm.set(`kick_${target.id}_${interaction.user.id}`, { motivo, targetTag: target.user.tag });
-    return interaction.reply({ embeds: [confirmEmbed], components: [row], flags: MessageFlags.Ephemeral });
+    return interaction.reply({ components: [c], flags: MessageFlags.IsComponentsV2 });
   }
 
   if (interaction.isButton() && interaction.customId.startsWith("confirm_kick_")) {
@@ -1220,7 +1449,7 @@ async function handleInteraction(interaction) {
     const targetId = parts[2];
     const key      = `kick_${targetId}_${interaction.user.id}`;
     const stored   = pendingConfirm.get(key);
-    if (!stored) return interaction.update({ content: "⚠️ Ação expirada.", embeds: [], components: [] });
+    if (!stored) return interaction.update({ content: "⚠️ Ação expirada ou sem permissão.", embeds: [], components: [] });
     pendingConfirm.delete(key);
 
     const { motivo, targetTag } = stored;
@@ -1232,18 +1461,14 @@ async function handleInteraction(interaction) {
       return interaction.update({ content: `❌ Erro ao expulsar: ${e.message}`, embeds: [], components: [] });
     }
 
-    const resultEmbed = new EmbedBuilder()
-      .setAuthor({ name: interaction.user.tag, iconURL: interaction.user.displayAvatarURL({ size: 128 }) })
-      .setTitle("👢 Membro Expulso")
-      .setThumbnail(target?.user?.displayAvatarURL({ size: 128 }) ?? null)
-      .addFields(
-        { name: "Membro", value: `${targetTag} (\`${targetId}\`)`, inline: false },
-        { name: "Motivo", value: motivo, inline: false },
-        { name: "Staff",  value: `<@${interaction.user.id}>`, inline: true },
-      )
-      .setColor(0xFFA500).setTimestamp();
+    const resultC = new ContainerBuilder()
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+        `## 👢 Membro Expulso\n\n**Membro:** <@${targetId}>\n**Motivo:** ${motivo}\n**Staff:** <@${interaction.user.id}>`
+      ))
+      .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# Data: ${getBRT()}`));
 
-    await interaction.update({ embeds: [resultEmbed], components: [] });
+    await interaction.update({ components: [resultC], flags: MessageFlags.IsComponentsV2 });
     await logPunishment(interaction.guild, {
       tipo: "Kick Aplicado", emoji: "👢",
       staffId: interaction.user.id, membroTag: targetTag, membroId: targetId, motivo
@@ -1801,13 +2026,21 @@ async function handleInteraction(interaction) {
 
     await interaction.message.edit({ components: [updated], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
 
-    const notice = new ContainerBuilder()
+    const claimNotice = new ContainerBuilder()
+      .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(BANNERS.ticket)))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🤝 Atendimento Iniciado`))
+      .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        `### 🤝 Atendimento Iniciado\n> <@${openerId}>, seu atendimento foi iniciado por <@${interaction.user.id}>!`
-      ));
+        `Olá <@${openerId}>, o seu atendimento foi iniciado!\n\n` +
+        `**Staff responsável:** <@${interaction.user.id}>\n\n` +
+        `> Por favor, descreva sua solicitação detalhadamente para agilizar o suporte.`
+      ))
+      .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`));
+      
     await ch.send({
       content: `<@${openerId}>`,
-      components: [notice],
+      components: [claimNotice],
       flags: MessageFlags.IsComponentsV2,
       allowedMentions: { parse: ["users"] },
     });
@@ -2205,7 +2438,7 @@ async function cmdOlheiroRules(channel) {
       "- skille se puder\n" +
       "- tocar independente de tudo\n" +
       "- não passar fome**\n\n" +
-      "Link: https://www.roblox.com/share?code=SEU_CODIGO&type=Server\n" +
+      "Link: [https://www.roblox.com/share?code=SEU_CODIGO&type=Server](https://www.roblox.com/share?code=SEU_CODIGO&type=Server)\n" +
       "||@here||\n" +
       "```"
     ))
@@ -2244,7 +2477,7 @@ async function cmdScrimHosterRules(channel) {
       "# | - NOME DO ESTÁDIO\n" +
       "# |- MODO (ex: clássico / futsal)\n" +
       "# |- Juiz: SEU_NICK\n\n" +
-      "https://www.roblox.com/share?code=SEU_CODIGO&type=Server\n" +
+      "[https://www.roblox.com/share?code=SEU_CODIGO&type=Server](https://www.roblox.com/share?code=SEU_CODIGO&type=Server)\n" +
       "@everyone @here\n" +
       "```"
     ))
@@ -2271,7 +2504,7 @@ async function cmdDrops(channel) {
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
       `### 🏆 Drop de Olheiro, Scrim Hoster ou Pic Perm!\n\n` +
-      `> 🕐 **Drops acontecem a cada 2 horas!**\n` +
+      `> 🕐 **Drops acontecem a cada 2 horas (10h as 00h)!**\n` +
       `> 🎯 O vencedor escolhe **um** dos cargos abaixo:\n\n` +
       `> 🔍 **Olheiro** — Realize peneiras oficiais\n` +
       `> ⚔️ **Scrim Hoster** — Organize scrims oficiais\n` +
@@ -2279,14 +2512,11 @@ async function cmdDrops(channel) {
     ))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `**🤔 Qual será o próximo sortudo?**\nFique ligado e seja o próximo a ganhar!\n\n` +
-      `✅ **Se ganhar:** Abra um ticket para resgatar seu cargo!`
+      `**🤔 Qual será o próximo sortudo?**\nFique ligado no chat e seja o próximo a ganhar!\n\n` +
+      `✅ **Se ganhar:** O prêmio é entregue direto na sua DM!`
     ))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# © 2026 PAFO — Drops System`))
-    .addActionRowComponents(new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setURL("https://discord.com/channels/1449061779060687063/1449068500567068804").setLabel("Resgatar Prêmio").setStyle(ButtonStyle.Link).setEmoji("🎁")
-    ));
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# © 2026 PAFO — Drops System`));
   await channel.send({ components: [c], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
 }
 
