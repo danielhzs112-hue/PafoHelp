@@ -186,13 +186,16 @@ const DROPS_QUESTIONS = [
 
 let dropActive = false;
 
-import { createServer } from "net";
-const lockServer = createServer();
-lockServer.on("error", () => {
-  console.error("❌ Bot já está rodando! Feche a instância anterior ou limpe as portas do host.");
-  process.exit(1);
+process.on('SIGTERM', () => {
+  console.log('SIGTERM recebido, encerrando bot...');
+  client.destroy();
+  process.exit(0);
 });
-lockServer.listen(19876, "127.0.0.1");
+
+process.on('SIGINT', () => {
+  client.destroy();
+  process.exit(0);
+});
 
 const client = new Client({
   intents: [
@@ -230,22 +233,23 @@ client.once("ready", async () => {
 });
 
 async function triggerDrop(manual = false) {
-  if (dropActive) return; // Evita dois drops ao mesmo tempo
+  console.log(`[DROP] Tentando iniciar... dropActive=${dropActive} manual=${manual}`);
   
-  // Se for automático, faz a checagem de horário. Se for manual, ignora.
-  if (!manual) {
-    const brtTime = new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo", hour12: false });
-    const brtHour = new Date(brtTime).getHours();
-    if (brtHour < 10) return; 
+  if (dropActive) {
+    console.log('[DROP] Bloqueado — já tem drop ativo');
+    return;
   }
 
   const guild = client.guilds.cache.get(GUILD_ID);
-  if (!guild) return;
+  if (!guild) { console.log('[DROP] Guild não encontrada'); return; }
   const channel = guild.channels.cache.get(GENERAL_CHANNEL_ID);
-  if (!channel) return;
+  if (!channel) { console.log('[DROP] Canal não encontrado'); return; }
 
   dropActive = true;
+  console.log(`[DROP] Drop iniciado no canal #${channel.name}`);
+
   const item = DROPS_QUESTIONS[Math.floor(Math.random() * DROPS_QUESTIONS.length)];
+  console.log(`[DROP] Pergunta: "${item.q}" | Respostas: ${item.a.join(', ')}`);
 
   const c = new ContainerBuilder()
     .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(BANNERS.booster)))
@@ -253,43 +257,61 @@ async function triggerDrop(manual = false) {
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Drops System`));
 
-  await channel.send({ content: "@here", components: [c], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+  await channel.send({ content: "@here", components: [c], flags: MessageFlags.IsComponentsV2 }).catch((e) => {
+    console.log(`[DROP] Erro ao enviar mensagem: ${e.message}`);
+    dropActive = false;
+    return;
+  });
 
-  const filter = m => !m.author.bot;
+  const filter = m => !m.author.bot && m.channel.id === channel.id;
   const collector = channel.createMessageCollector({ filter, time: 60000 });
 
+  let answered = false;
+
   collector.on("collect", async m => {
+    console.log(`[DROP] Resposta recebida de ${m.author.tag}: "${m.content}"`);
     const answer = m.content.toLowerCase().trim();
     if (item.a.some(ans => answer.includes(ans))) {
+      if (answered) return;
+      answered = true;
       collector.stop("winner");
+
       const winC = new ContainerBuilder()
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🎉 TEMOS UM VENCEDOR!\n\nParabéns <@${m.author.id}>! Você acertou a resposta e ganhou o drop!\nVerifique suas DMs para escolher seu prêmio.`))
         .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Drops System`));
       await channel.send({ components: [winC], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
 
-const dmSelect = new StringSelectMenuBuilder()
-  .setCustomId(`drop_claim_${m.author.id}`)
-  .setPlaceholder("Escolha seu cargo VIP (Válido por 5 dias)")
-  .addOptions(
-    new StringSelectMenuOptionBuilder().setLabel("Olheiro (5 Dias)").setValue("1449070067131224268").setEmoji("🔍"),
-    new StringSelectMenuOptionBuilder().setLabel("Scrim Hoster (5 Dias)").setValue("1449070133040517262").setEmoji("⚔️"),
-    new StringSelectMenuOptionBuilder().setLabel("Pic Perm (5 Dias)").setValue("1450118477179260948").setEmoji("📸")
-  );
+      const dmSelect = new StringSelectMenuBuilder()
+        .setCustomId(`drop_claim_${m.author.id}`)
+        .setPlaceholder("Escolha seu cargo VIP (Válido por 5 dias)")
+        .addOptions(
+          new StringSelectMenuOptionBuilder().setLabel("Olheiro (5 Dias)").setValue("1449070067131224268").setEmoji("🔍"),
+          new StringSelectMenuOptionBuilder().setLabel("Scrim Hoster (5 Dias)").setValue("1449070133040517262").setEmoji("⚔️"),
+          new StringSelectMenuOptionBuilder().setLabel("Pic Perm (5 Dias)").setValue("1450118477179260948").setEmoji("📸")
+        );
+
       const dmC = new ContainerBuilder()
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🎁 Você Venceu o Drop!\n\nVocê respondeu corretamente no chat e garantiu seu prêmio. Escolha abaixo qual cargo você deseja receber no servidor:`))
         .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Drops System`))
         .addActionRowComponents(new ActionRowBuilder().addComponents(dmSelect));
 
-      await m.author.send({ components: [dmC], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+      await m.author.send({ components: [dmC], flags: MessageFlags.IsComponentsV2 }).catch(() => {
+        console.log(`[DROP] DM fechada para ${m.author.tag}, avisando no canal`);
+        channel.send({ content: `<@${m.author.id}> ❌ Não consegui te enviar DM! Abre suas DMs e fala com a staff para resgatar o prêmio.` }).catch(() => {});
+      });
+
+      console.log(`[DROP] Vencedor: ${m.author.tag}`);
     }
   });
 
   collector.on("end", (collected, reason) => {
     dropActive = false;
+    console.log(`[DROP] Encerrado. Razão: ${reason} | Respostas recebidas: ${collected.size}`);
     if (reason !== "winner") {
-      const failC = new ContainerBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(`### ⏰ O tempo esgotou!\n> Ninguém acertou o drop desta vez. A resposta era: **${item.a[0]}**`));
+      const failC = new ContainerBuilder()
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### ⏰ O tempo esgotou!\n> Ninguém acertou o drop desta vez. A resposta era: **${item.a[0]}**`));
       channel.send({ components: [failC], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
     }
   });
@@ -472,12 +494,11 @@ async function checkStaleTickets() {
       ))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`));
 
-    await ch.send({
-      content: `<@${info.openerId}> ${staffMentions}`,
-      components: [reminderContainer],
-      flags: MessageFlags.IsComponentsV2,
-      allowedMentions: { parse: ["users", "roles"] },
-    }).catch(() => {});
+await ch.send({ content: `<@${info.openerId}> ${staffMentions}`, allowedMentions: { parse: ["users", "roles"] } }).catch(() => {});
+await ch.send({
+  components: [reminderContainer],
+  flags: MessageFlags.IsComponentsV2,
+}).catch(() => {});
 
     const opener = await guild.members.fetch(info.openerId).catch(() => null);
     if (opener) {
@@ -820,7 +841,7 @@ client.on("messageCreate", async (message) => {
     "!friendlys":        () => cmdFriendlys(message.channel),
     "!olheiro-rules":    () => cmdOlheiroRules(message.channel),
     "!scrimhoster-rules":() => cmdScrimHosterRules(message.channel),
-    "!drop":             () => triggerDrop(true), // <-- Novo comando manual chama a função com 'true'
+"!drop": () => { dropActive = false; triggerDrop(true); },
     "!drops":            () => cmdDrops(message.channel),
     "!bio-reward":       () => cmdBioReward(message.channel),
     "!parceria":         () => cmdParceria(message.channel),
@@ -1696,7 +1717,7 @@ async function handleInteraction(interaction) {
     interaction.editReply({ content: `✅ Ticket criado: <#${ticketCh.id}>` }).catch(() => {});
 
     const staffMentions = STAFF_ROLES.map(id => `<@&${id}>`).join(" ");
-    await ticketCh.send({ content: `<@${user.id}> ${staffMentions}`, allowedMentions: { parse: ["users","roles"] } });
+await ticketCh.send({ content: `<@${user.id}> ${staffMentions}`, allowedMentions: { parse: ["users","roles"] } });
 
     const c = new ContainerBuilder()
       .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(BANNERS.ticket)))
@@ -2001,7 +2022,7 @@ async function handleInteraction(interaction) {
     return;
   }
 
-  if (interaction.isButton() && interaction.customId.startsWith("ticket_claim_")) {
+if (interaction.isButton() && interaction.customId.startsWith("ticket_claim_")) {
     if (!isStaff(interaction.member))
       return interaction.reply({ content: "❌ Apenas a staff pode reivindicar tickets.", flags: MessageFlags.Ephemeral });
 
@@ -2010,13 +2031,18 @@ async function handleInteraction(interaction) {
       return interaction.reply({ content: "❌ Este ticket já foi reivindicado.", flags: MessageFlags.Ephemeral });
     claimedTickets.add(ch.id);
 
-    await interaction.reply({ content: "✅ Você reivindicou este ticket!", flags: MessageFlags.Ephemeral });
+    // Pega o openerId do ticketData, não do customId
+    const data = ticketData.get(ch.id);
+    const openerId = data?.openerId ?? interaction.customId.split("_")[3] ?? null;
 
-    const [,, channelId, openerId] = interaction.customId.split("_");
-    if (ticketData.has(ch.id)) {
-      ticketData.get(ch.id).claimerId = interaction.user.id;
+    console.log(`[TICKET CLAIM] Canal: ${ch.id} | Opener: ${openerId} | Staff: ${interaction.user.id}`);
+
+    if (data) {
+      data.claimerId = interaction.user.id;
       saveTicketData(ticketData);
     }
+
+    await interaction.reply({ content: "✅ Você reivindicou este ticket!", flags: MessageFlags.Ephemeral });
 
     await Promise.all([
       ...STAFF_ROLES.map(rId => ch.permissionOverwrites.edit(rId, { ViewChannel: false }).catch(() => {})),
@@ -2024,7 +2050,6 @@ async function handleInteraction(interaction) {
       openerId ? ch.permissionOverwrites.edit(openerId, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true }).catch(() => {}) : null,
     ]);
 
-    const data       = ticketData.get(ch.id);
     const ticketInfo = `🎫 **Ticket Aberto**\n\n> 📋 **Nome do Ticket:** \`${data?.ticketName ?? ch.name}\`\n> 👤 **Criado Por:** <@${data?.openerId ?? openerId}>\n> 📅 **Opened Date:** ${data?.dateStr ?? getBRT()}\n> 🏷️ **Ticket Type:** ${data?.label ?? "Desconhecido"}`;
 
     const updated = new ContainerBuilder()
@@ -2043,7 +2068,14 @@ async function handleInteraction(interaction) {
         new ButtonBuilder().setCustomId(`panel_member_${ch.id}_${openerId}`).setLabel("Painel Membro").setStyle(ButtonStyle.Secondary).setEmoji("👤")
       ));
 
-    await interaction.message.edit({ components: [updated], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
+    await interaction.message.edit({ components: [updated], flags: MessageFlags.IsComponentsV2 }).catch(e => {
+      console.log(`[TICKET CLAIM] Erro ao editar mensagem: ${e.message}`);
+    });
+
+    // Envia o claimNotice em duas mensagens separadas para garantir o ping
+    if (openerId) {
+      await ch.send({ content: `<@${openerId}>`, allowedMentions: { parse: ["users"] } }).catch(() => {});
+    }
 
     const claimNotice = new ContainerBuilder()
       .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(BANNERS.ticket)))
@@ -2056,13 +2088,14 @@ async function handleInteraction(interaction) {
       ))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`));
-      
+
     await ch.send({
-      content: `<@${openerId}>`,
       components: [claimNotice],
       flags: MessageFlags.IsComponentsV2,
-      allowedMentions: { parse: ["users"] },
+    }).catch(e => {
+      console.log(`[TICKET CLAIM] Erro ao enviar claimNotice: ${e.message}`);
     });
+
     return;
   }
 
