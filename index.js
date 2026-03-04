@@ -102,6 +102,7 @@ client.once("ready", async () => {
   await registerSlashCommands();
   checkTempRoles();
   setInterval(checkTempRoles, 60_000);
+  setInterval(checkStaleTickets, 5 * 60_000);
 });
 
 async function registerSlashCommands() {
@@ -256,6 +257,57 @@ async function checkTempRoles() {
   saveTempRoles(keep);
 }
 
+async function checkStaleTickets() {
+  const now = Date.now();
+  const TWO_HOURS = 2 * 60 * 60 * 1000;
+  const data = loadTicketData();
+
+  for (const [channelId, info] of data.entries()) {
+    if (info.reminderSent) continue;
+    if (!info.createdAt) continue;
+    if (now - info.createdAt < TWO_HOURS) continue;
+
+    const guild = client.guilds.cache.get(GUILD_ID);
+    if (!guild) continue;
+    const ch = guild.channels.cache.get(channelId);
+    if (!ch) continue;
+
+    const staffMentions = STAFF_ROLES.map(id => `<@&${id}>`).join(" ");
+
+    const reminderContainer = new ContainerBuilder()
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+        `## ⏰ Ticket Aguardando Atendimento\n\n` +
+        `<@${info.openerId}> está aguardando há **2 horas** sem resposta!\n\n` +
+        `> Por favor, atenda ou feche este ticket.`
+      ))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`));
+
+    await ch.send({
+      content: `<@${info.openerId}> ${staffMentions}`,
+      components: [reminderContainer],
+      flags: MessageFlags.IsComponentsV2,
+      allowedMentions: { parse: ["users", "roles"] },
+    }).catch(() => {});
+
+    const opener = await guild.members.fetch(info.openerId).catch(() => null);
+    if (opener) {
+      const dmContainer = new ContainerBuilder()
+        .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(BANNERS.ticket)))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## ⏰ Seu Ticket Ainda Não Foi Atendido`))
+        .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+          `**Ticket:** \`${info.ticketName}\`\n**Tipo:** ${info.label}\n\nSeu ticket está aberto há **2 horas** sem resposta.\nAcesse o canal para continuar ou aguarde a staff.`
+        ))
+        .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`));
+      await opener.send({ components: [dmContainer], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+    }
+
+    info.reminderSent = true;
+    saveTicketData(data);
+  }
+}
+
 function getBRT() {
   return new Date().toLocaleString("pt-BR", {
     timeZone: "America/Sao_Paulo",
@@ -265,6 +317,8 @@ function getBRT() {
 }
 
 const handled        = new Set();
+const editHandled    = new Set();
+const deleteHandled  = new Set();
 const cmdCooldown    = new Set();
 const ticketOpening  = new Set();
 const claimedTickets = new Set();
@@ -553,6 +607,10 @@ client.on("messageCreate", async (message) => {
 
 client.on("messageDelete", async (message) => {
   if (!message.guild || message.author?.bot) return;
+  if (deleteHandled.has(message.id)) return;
+  deleteHandled.add(message.id);
+  setTimeout(() => deleteHandled.delete(message.id), 10_000);
+
   const logCh = message.guild.channels.cache.get(LOG_CHANNEL_ID);
   if (!logCh) return;
   if (!message.content && message.attachments.size === 0) return;
@@ -588,6 +646,9 @@ client.on("messageDelete", async (message) => {
 client.on("messageUpdate", async (oldMessage, newMessage) => {
   if (!newMessage.guild || newMessage.author?.bot) return;
   if (oldMessage.content === newMessage.content) return;
+  if (editHandled.has(newMessage.id)) return;
+  editHandled.add(newMessage.id);
+  setTimeout(() => editHandled.delete(newMessage.id), 10_000);
 
   const logCh = newMessage.guild.channels.cache.get(LOG_CHANNEL_ID);
   if (!logCh) return;
@@ -1385,7 +1446,7 @@ async function handleInteraction(interaction) {
     ticketOpening.delete(user.id);
 
     const dateStr = getBRT();
-    ticketData.set(ticketCh.id, { ticketName, openerId: user.id, label, dateStr, claimerId: null, ratedSent: false, isCompra });
+    ticketData.set(ticketCh.id, { ticketName, openerId: user.id, label, dateStr, claimerId: null, ratedSent: false, isCompra, createdAt: Date.now(), reminderSent: false });
     saveTicketData(ticketData);
 
     interaction.editReply({ content: `✅ Ticket criado: <#${ticketCh.id}>` }).catch(() => {});
@@ -1740,10 +1801,16 @@ async function handleInteraction(interaction) {
 
     await interaction.message.edit({ components: [updated], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
 
-    const notice = new ContainerBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `### 🤝 Atendimento Iniciado\n> <@${interaction.user.id}> é o responsável por este ticket.`
-    ));
-    await ch.send({ components: [notice], flags: MessageFlags.IsComponentsV2 });
+    const notice = new ContainerBuilder()
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+        `### 🤝 Atendimento Iniciado\n> <@${openerId}>, seu atendimento foi iniciado por <@${interaction.user.id}>!`
+      ));
+    await ch.send({
+      content: `<@${openerId}>`,
+      components: [notice],
+      flags: MessageFlags.IsComponentsV2,
+      allowedMentions: { parse: ["users"] },
+    });
     return;
   }
 
