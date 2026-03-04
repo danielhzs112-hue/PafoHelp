@@ -257,11 +257,13 @@ async function triggerDrop(manual = false) {
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Drops System`));
 
-  await channel.send({ content: "@here", components: [c], flags: MessageFlags.IsComponentsV2 }).catch((e) => {
-    console.log(`[DROP] Erro ao enviar mensagem: ${e.message}`);
-    dropActive = false;
-    return;
-  });
+ await channel.send({ content: "@here", allowedMentions: { parse: ["everyone"] } }).catch(() => {});
+const sent = await channel.send({ components: [c], flags: MessageFlags.IsComponentsV2 }).catch((e) => {
+  console.log(`[DROP] Erro ao enviar mensagem: ${e.message}`);
+  dropActive = false;
+  return;
+});
+if (!sent) return;
 
   const filter = m => !m.author.bot && m.channel.id === channel.id;
   const collector = channel.createMessageCollector({ filter, time: 60000 });
