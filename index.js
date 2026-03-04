@@ -206,20 +206,38 @@ const client = new Client({
 });
 
 client.once("ready", async () => {
-  console.log(`✅ Bot online: ${client.user.tag}`);
+  const horaLog = new Date().toLocaleTimeString("pt-BR");
+  console.log(`[${horaLog}] ✅ Bot online: ${client.user.tag} (PID: ${process.pid})`);
+  
   await registerSlashCommands();
   checkTempRoles();
   setInterval(checkTempRoles, 60_000);
   setInterval(checkStaleTickets, 5 * 60_000);
-  triggerDrop();
-  setInterval(triggerDrop, 2 * 60 * 60 * 1000);
+  
+  // REMOVA as duas linhas antigas do triggerDrop() daqui de dentro
+  // e adicione este verificador que roda a cada 1 minuto
+  setInterval(() => {
+    const brtTime = new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" });
+    const d = new Date(brtTime);
+    const h = d.getHours();
+    const m = d.getMinutes();
+
+    // Dispara apenas em horas PARES, entre 10h e 22h, exatamente no minuto 0 (ex: 20:00)
+    if (h >= 10 && h <= 22 && h % 2 === 0 && m === 0) {
+      triggerDrop();
+    }
+  }, 60 * 1000); // 1 minuto
 });
 
-async function triggerDrop() {
-  if (dropActive) return;
-  const brtTime = new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo", hour12: false });
-  const brtHour = new Date(brtTime).getHours();
-  if (brtHour < 10) return; 
+async function triggerDrop(manual = false) {
+  if (dropActive) return; // Evita dois drops ao mesmo tempo
+  
+  // Se for automático, faz a checagem de horário. Se for manual, ignora.
+  if (!manual) {
+    const brtTime = new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo", hour12: false });
+    const brtHour = new Date(brtTime).getHours();
+    if (brtHour < 10) return; 
+  }
 
   const guild = client.guilds.cache.get(GUILD_ID);
   if (!guild) return;
@@ -781,7 +799,7 @@ client.on("messageCreate", async (message) => {
   const content = message.content.trim().toLowerCase();
   const cmds = [
     "!verify","!rules","!booster","!info","!welcome","!loja","!ticket","!friendlys",
-    "!olheiro-rules","!scrimhoster-rules","!drops","!bio-reward","!parceria",
+    "!olheiro-rules","!scrimhoster-rules","!drops","!bio-reward","!parceria", "!drop",
   ];
   if (!cmds.includes(content)) return;
 
@@ -802,6 +820,7 @@ client.on("messageCreate", async (message) => {
     "!friendlys":        () => cmdFriendlys(message.channel),
     "!olheiro-rules":    () => cmdOlheiroRules(message.channel),
     "!scrimhoster-rules":() => cmdScrimHosterRules(message.channel),
+    "!drop":             () => triggerDrop(true), // <-- Novo comando manual chama a função com 'true'
     "!drops":            () => cmdDrops(message.channel),
     "!bio-reward":       () => cmdBioReward(message.channel),
     "!parceria":         () => cmdParceria(message.channel),
