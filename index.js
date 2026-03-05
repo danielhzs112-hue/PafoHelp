@@ -252,7 +252,6 @@ async function triggerDrop(manual = false) {
   console.log(`[DROP] Pergunta: "${item.q}" | Respostas: ${item.a.join(', ')}`);
 
   const c = new ContainerBuilder()
-    .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder()))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🎁 DROP RÁPIDO!\n\n> **${item.q}**\n\nResponda no chat em até **1 minuto** para ganhar um cargo VIP!\n*(Olheiro [5 Dias], Scrim Hoster ou Pic Perm)*`))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Drops System`));
@@ -2080,7 +2079,6 @@ if (interaction.isButton() && interaction.customId.startsWith("ticket_claim_")) 
     }
 
     const claimNotice = new ContainerBuilder()
-      .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder()))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🤝 Atendimento Iniciado`))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(
