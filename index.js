@@ -73,6 +73,15 @@ const BLACKLIST_PATTERNS = [
   /cute-voice/i,
 ];
 
+// ─── Canais onde links/convites são PERMITIDOS ─────────────────────────────────
+const INVITE_ALLOWED_CHANNELS = new Set([
+  FREEAGENT_CHANNEL_ID,
+  SCOUTING_CHANNEL_ID,
+  PARCERIA_CHANNEL_ID,
+  FREELINKS_CHANNEL_ID,
+  LEAGUES_CHANNEL_ID,
+]);
+
 const EMOJI_FREE_CHANNELS = new Set([
   FREEAGENT_CHANNEL_ID,
   LEAGUES_CHANNEL_ID,
@@ -80,7 +89,8 @@ const EMOJI_FREE_CHANNELS = new Set([
   FREELINKS_CHANNEL_ID,
 ]);
 
-const DROPS_QUESTIONS = [
+// ─── PERGUNTAS DO DROP (250 perguntas, sem repetição via shuffle) ──────────────
+const DROPS_QUESTIONS_MASTER = [
   { q: "Que ano nasceu o Lula?", a: ["1945"] },
   { q: "Qual a capital do Brasil?", a: ["brasilia", "brasília"] },
   { q: "Em que ano o Roblox foi lançado?", a: ["2006"] },
@@ -119,7 +129,6 @@ const DROPS_QUESTIONS = [
   { q: "Quantos dias tem um ano bissexto?", a: ["366"] },
   { q: "Qual o símbolo químico do oxigênio?", a: ["o"] },
   { q: "Qual esporte o Pelé jogava?", a: ["futebol"] },
-  { q: "Qual o nome do evento em que a bola passa a linha do gol?", a: ["gol"] },
   { q: "Quantos jogadores tem um time de futebol em campo?", a: ["11", "onze"] },
   { q: "Qual país venceu a Copa do Mundo de 2014?", a: ["alemanha"] },
   { q: "Em que estado fica a cidade de São Paulo?", a: ["sao paulo", "sp"] },
@@ -151,7 +160,6 @@ const DROPS_QUESTIONS = [
   { q: "Qual é a capital da Argentina?", a: ["buenos aires"] },
   { q: "O que significa a sigla ONU?", a: ["organizacao das nacoes unidas", "organização das nações unidas"] },
   { q: "Em qual oceano afundou o Titanic?", a: ["atlantico", "atlântico"] },
-  { q: "Quantas sílabas tem a palavra 'paralelepípedo'?", a: ["7", "sete"] },
   { q: "Em que estado do Brasil fica o Pelourinho?", a: ["bahia", "ba"] },
   { q: "Qual time espanhol tem mais títulos da Champions League?", a: ["real madrid"] },
   { q: "Qual a cidade com mais habitantes no mundo?", a: ["toquio", "tóquio"] },
@@ -181,8 +189,197 @@ const DROPS_QUESTIONS = [
   { q: "Em Harry Potter, qual casa tem as cores vermelho e dourado?", a: ["grifinoria", "grifinória"] },
   { q: "Qual super-herói tem um escudo de Vibranium?", a: ["capitao america", "capitão américa"] },
   { q: "Em que jogo existe a cidade de Los Santos?", a: ["gta v", "gta", "grand theft auto"] },
-  { q: "Quantos anos tem um século?", a: ["100", "cem"] }
+  { q: "Quantos anos tem um século?", a: ["100", "cem"] },
+  // ─── NOVAS PERGUNTAS (+150) ────────────────────────────────────────────────
+  { q: "Qual é o resultado de 7 x 7?", a: ["49", "quarenta e nove"] },
+  { q: "Qual a capital da Itália?", a: ["roma"] },
+  { q: "Qual a capital da Espanha?", a: ["madrid"] },
+  { q: "Qual a capital de Portugal?", a: ["lisboa"] },
+  { q: "Qual a capital do Japão?", a: ["toquio", "tóquio"] },
+  { q: "Qual a capital da China?", a: ["pequim", "beijing"] },
+  { q: "Qual a capital da Alemanha?", a: ["berlim"] },
+  { q: "Qual a capital da Austrália?", a: ["camberra", "canberra"] },
+  { q: "Qual a capital do Canadá?", a: ["ottawa"] },
+  { q: "Qual a capital do México?", a: ["cidade do mexico", "cidade do méxico"] },
+  { q: "Qual o animal mais rápido do mundo?", a: ["guepardo", "chita"] },
+  { q: "Qual o animal mais alto do mundo?", a: ["girafa"] },
+  { q: "Qual o animal mais pesado do mundo?", a: ["baleia azul"] },
+  { q: "Qual o maior deserto do mundo?", a: ["saara", "sahara"] },
+  { q: "Qual o rio mais longo do mundo?", a: ["nilo"] },
+  { q: "Qual o maior país do mundo em área?", a: ["russia", "rússia"] },
+  { q: "Quantos lados tem um hexágono?", a: ["6", "seis"] },
+  { q: "Quantos lados tem um octógono?", a: ["8", "oito"] },
+  { q: "Quanto é 100 dividido por 4?", a: ["25", "vinte e cinco"] },
+  { q: "Quanto é 3 elevado a 3?", a: ["27", "vinte e sete"] },
+  { q: "Qual a cor primária que, misturada ao vermelho, forma o roxo?", a: ["azul"] },
+  { q: "Qual a cor primária que, misturada ao azul, forma o verde?", a: ["amarelo"] },
+  { q: "Qual é o número Pi (primeiras 3 casas)?", a: ["3.14", "3,14"] },
+  { q: "Quantos planetas tem o sistema solar?", a: ["8", "oito"] },
+  { q: "Qual é o planeta mais distante do Sol?", a: ["netuno"] },
+  { q: "Qual é o planeta mais quente do sistema solar?", a: ["venus", "vênus"] },
+  { q: "Qual é o planeta mais frio do sistema solar?", a: ["netuno"] },
+  { q: "Qual é o maior satélite natural de Júpiter?", a: ["ganymede", "ganimedes"] },
+  { q: "Em que ano foi lançado o primeiro iPhone?", a: ["2007"] },
+  { q: "Quem fundou a Apple?", a: ["steve jobs"] },
+  { q: "Quem fundou a Amazon?", a: ["jeff bezos"] },
+  { q: "Quem fundou o Facebook?", a: ["mark zuckerberg", "zuckerberg"] },
+  { q: "Quem fundou a Tesla?", a: ["elon musk"] },
+  { q: "Em que ano a internet foi inventada?", a: ["1969", "1991"] },
+  { q: "Qual linguagem de programação tem um logo de cobra?", a: ["python"] },
+  { q: "O que significa HTML?", a: ["hyper text markup language"] },
+  { q: "O que significa CPU?", a: ["central processing unit", "unidade de processamento central"] },
+  { q: "Qual é o maior número de um byte?", a: ["255"] },
+  { q: "Qual é a velocidade da luz (aproximada)?", a: ["300000 km/s", "300.000 km/s", "3x10^8"] },
+  { q: "Qual o elemento mais abundante na crosta terrestre?", a: ["oxigenio", "oxigênio"] },
+  { q: "Qual o gás mais abundante na atmosfera terrestre?", a: ["nitrogenio", "nitrogênio"] },
+  { q: "Quantos cromossomos tem um ser humano?", a: ["46"] },
+  { q: "Qual o órgão que bombeia sangue no corpo humano?", a: ["coracao", "coração"] },
+  { q: "Qual o osso mais longo do corpo humano?", a: ["femur", "fêmur"] },
+  { q: "Quantas câmaras tem o coração humano?", a: ["4", "quatro"] },
+  { q: "Quantos dentes tem um adulto (incluindo sisos)?", a: ["32"] },
+  { q: "Qual o órgão responsável por filtrar o sangue?", a: ["rim", "rins"] },
+  { q: "Qual a vitamina produzida pelo sol?", a: ["vitamina d"] },
+  { q: "Quantas estrelas tem a bandeira do Brasil?", a: ["27"] },
+  { q: "Qual a ordem dos colores da bandeira do Brasil?", a: ["verde amarelo azul branco"] },
+  { q: "Em que ano o Brasil foi fundado?", a: ["1822"] },
+  { q: "Quem proclamou a independência do Brasil?", a: ["dom pedro", "dom pedro i", "pedro i"] },
+  { q: "Em que cidade fica o Maracanã?", a: ["rio de janeiro"] },
+  { q: "Qual o maior estádio do Brasil?", a: ["maracana", "maracanã"] },
+  { q: "Em que time jogou Ronaldo Fenômeno?", a: ["barcelona", "real madrid", "inter de milao"] },
+  { q: "Quantas Copas do Mundo a Alemanha ganhou?", a: ["4", "quatro"] },
+  { q: "Quantas Copas do Mundo a Argentina ganhou?", a: ["3", "três", "tres"] },
+  { q: "Em que ano a Argentina ganhou a Copa de 2022?", a: ["2022"] },
+  { q: "Quem é o artilheiro histórico da Copa do Mundo?", a: ["miroslav klose", "klose"] },
+  { q: "Qual time tem mais títulos do Brasileirão?", a: ["palmeiras"] },
+  { q: "Qual time tem mais títulos da Libertadores?", a: ["independiente"] },
+  { q: "Em que ano foi a Copa do Mundo no Brasil?", a: ["2014", "1950"] },
+  { q: "Em que jogo existe o personagem Kratos?", a: ["god of war"] },
+  { q: "Em que jogo existe o personagem Master Chief?", a: ["halo"] },
+  { q: "Em que jogo existe o personagem Lara Croft?", a: ["tomb raider"] },
+  { q: "Em que jogo existe o personagem Link?", a: ["the legend of zelda", "zelda"] },
+  { q: "Em que jogo existe o personagem Pikachu?", a: ["pokemon", "pokémon"] },
+  { q: "Qual o tipo do Pikachu?", a: ["eletrico", "elétrico"] },
+  { q: "Qual o starter de fogo da primeira geração de Pokémon?", a: ["charmander"] },
+  { q: "Qual o starter de água da primeira geração de Pokémon?", a: ["squirtle"] },
+  { q: "Quantos Pokémon existiam na primeira geração?", a: ["151"] },
+  { q: "Qual o nome do rival do Ash em Pokémon?", a: ["gary"] },
+  { q: "Em que anime aparece o personagem Goku?", a: ["dragon ball", "dragon ball z"] },
+  { q: "Qual é o ataque mais famoso do Goku?", a: ["kamehameha"] },
+  { q: "Em que anime aparece o personagem Luffy?", a: ["one piece"] },
+  { q: "Qual o sonho do Luffy em One Piece?", a: ["rei dos piratas"] },
+  { q: "Em que anime aparece o personagem Ichigo?", a: ["bleach"] },
+  { q: "Em que anime aparece o personagem Deku?", a: ["my hero academia", "boku no hero"] },
+  { q: "Em que anime aparece o personagem Eren?", a: ["attack on titan", "shingeki no kyojin"] },
+  { q: "Qual o nome completo do personagem Light em Death Note?", a: ["light yagami"] },
+  { q: "Qual instrumento Spongebob toca?", a: ["clarinete", "clarineta"] },
+  { q: "Qual o nome do melhor amigo do Bob Esponja?", a: ["patrick"] },
+  { q: "Qual o nome do vizinho do Bob Esponja?", a: ["lula molusco", "squidward"] },
+  { q: "Qual personagem diz 'Ao infinito e além!'?", a: ["buzz lightyear"] },
+  { q: "Qual personagem diz 'Hakuna Matata'?", a: ["timon e pumba", "timon", "simba"] },
+  { q: "Qual filme Disney tem a música 'Let It Go'?", a: ["frozen"] },
+  { q: "Qual é o nome da princesa de Frozen?", a: ["elsa", "anna"] },
+  { q: "Qual é o nome do boneco de neve em Frozen?", a: ["olaf"] },
+  { q: "Quantos anões tem Branca de Neve?", a: ["7", "sete"] },
+  { q: "Qual é o nome do genio em Aladdin?", a: ["genio", "gênio"] },
+  { q: "Qual o nome do peixe pai em Procurando Nemo?", a: ["marlin"] },
+  { q: "Em que cidade se passa Divertida Mente?", a: ["san francisco"] },
+  { q: "Qual o nome da personagem principal de Moana?", a: ["moana"] },
+  { q: "Qual é a cor favorita do Hulk?", a: ["verde"] },
+  { q: "Qual o nome verdadeiro do Batman?", a: ["bruce wayne"] },
+  { q: "Qual o nome verdadeiro do Superman?", a: ["clark kent"] },
+  { q: "Qual o nome verdadeiro do Homem Aranha?", a: ["peter parker"] },
+  { q: "Qual o nome verdadeiro do Homem de Ferro?", a: ["tony stark"] },
+  { q: "Qual o nome verdadeiro do Capitão América?", a: ["steve rogers"] },
+  { q: "Qual é a pedra do Infinito verde em Vingadores?", a: ["tempo"] },
+  { q: "Quantas Pedras do Infinito existem?", a: ["6", "seis"] },
+  { q: "Qual personagem diz 'Eu sou Groot'?", a: ["groot"] },
+  { q: "Qual o planeta de origem do Superman?", a: ["krypton"] },
+  { q: "Em que jogo se diz 'It's dangerous to go alone'?", a: ["zelda", "the legend of zelda"] },
+  { q: "Qual o animal símbolo do WWF (fundo mundial para a natureza)?", a: ["panda"] },
+  { q: "Qual a flor nacional do Brasil?", a: ["cattleya labiata", "orquidea", "orquídea"] },
+  { q: "Qual a árvore símbolo do Brasil?", a: ["ipê amarelo", "pau brasil"] },
+  { q: "Qual o pássaro símbolo do Brasil?", a: ["sabia", "sabiá"] },
+  { q: "Qual o esporte mais popular do Brasil?", a: ["futebol"] },
+  { q: "Qual o país de origem do samba?", a: ["brasil"] },
+  { q: "Qual o país de origem do tango?", a: ["argentina"] },
+  { q: "Qual o país de origem do flamenco?", a: ["espanha"] },
+  { q: "Quantas notas tem a escala musical?", a: ["7", "sete"] },
+  { q: "Qual a nota musical que vem depois de Mi?", a: ["fa", "fá"] },
+  { q: "Quantas cordas tem um violão padrão?", a: ["6", "seis"] },
+  { q: "Quantas teclas tem um piano padrão?", a: ["88"] },
+  { q: "Qual o instrumento mais antigo do mundo?", a: ["flauta"] },
+  { q: "Quem compôs a Quinta Sinfonia?", a: ["beethoven"] },
+  { q: "Qual o nome do rei da selva em 'O Rei Leão'?", a: ["mufasa", "simba"] },
+  { q: "Em que continente fica o Quênia?", a: ["africa", "áfrica"] },
+  { q: "Qual o nome do maior lago do mundo?", a: ["mar caspio", "mar cáspio"] },
+  { q: "Qual a maior floresta tropical do mundo?", a: ["amazonia", "amazônia"] },
+  { q: "Em que país fica o Taj Mahal?", a: ["india", "índia"] },
+  { q: "Em que país fica a Grande Muralha?", a: ["china"] },
+  { q: "Em que país fica o Coliseu?", a: ["italia", "itália", "roma"] },
+  { q: "Em que país fica a Estátua da Liberdade?", a: ["estados unidos", "eua"] },
+  { q: "Qual a profundidade máxima do oceano (Fossa das Marianas, aproximada)?", a: ["11km", "11 km", "11000m"] },
+  { q: "Quantas horas tem uma semana?", a: ["168"] },
+  { q: "Quantos dias tem o mês de fevereiro em ano não bissexto?", a: ["28"] },
+  { q: "Qual o resultado de 15 x 15?", a: ["225"] },
+  { q: "Qual o resultado de 12 x 12?", a: ["144"] },
+  { q: "Quanto é 2 elevado a 10?", a: ["1024"] },
+  { q: "Qual é o número de Avogadro (potência)?", a: ["6.02 x 10^23", "6x10^23"] },
+  { q: "Qual o nome do processo de transformação de larva em borboleta?", a: ["metamorfose"] },
+  { q: "Qual o nome da ciência que estuda os insetos?", a: ["entomologia"] },
+  { q: "Qual o nome da ciência que estuda as estrelas?", a: ["astronomia", "astrofisica"] },
+  { q: "Qual o nome da ciência que estuda os fósseis?", a: ["paleontologia"] },
+  { q: "Qual o nome da ciência que estuda o comportamento humano?", a: ["psicologia"] },
+  { q: "Qual o nome da ciência que estuda os terremotos?", a: ["sismologia"] },
+  { q: "Qual o nome dado à camada mais externa da Terra?", a: ["crosta"] },
+  { q: "Qual o nome do processo que transforma a uva em vinho?", a: ["fermentacao", "fermentação"] },
+  { q: "Qual o país que mais produz café no mundo?", a: ["brasil"] },
+  { q: "Qual o país que mais produz petróleo no mundo?", a: ["estados unidos", "eua", "arabia saudita"] },
+  { q: "Quem escreveu 'A Divina Comédia'?", a: ["dante", "dante alighieri"] },
+  { q: "Quem escreveu '1984'?", a: ["george orwell", "orwell"] },
+  { q: "Quem escreveu 'Harry Potter'?", a: ["j.k. rowling", "rowling"] },
+  { q: "Quem escreveu 'O Pequeno Príncipe'?", a: ["antoine de saint-exupery", "saint-exupery"] },
+  { q: "Qual o nome do detetive mais famoso da literatura?", a: ["sherlock holmes"] },
+  { q: "Qual o personagem que diz 'Elementary, my dear Watson'?", a: ["sherlock holmes"] },
+  { q: "Qual o nome do criador do Sherlock Holmes?", a: ["arthur conan doyle", "conan doyle"] },
+  { q: "Quantas letras tem o alfabeto português?", a: ["26"] },
+  { q: "Qual a última letra do alfabeto?", a: ["z"] },
+  { q: "Qual o plural de 'pão'?", a: ["paes", "pães"] },
+  { q: "Qual é o antônimo de 'gigante'?", a: ["pequeno", "minusculo", "minúsculo"] },
+  { q: "Qual o sinônimo de 'feliz'?", a: ["alegre", "contente"] },
+  { q: "Quanto é 1000 - 537?", a: ["463"] },
+  { q: "Qual é o quadrado de 9?", a: ["81"] },
+  { q: "Qual é a raiz quadrada de 256?", a: ["16"] },
+  { q: "Quantos graus tem um triângulo equilátero em cada ângulo?", a: ["60", "sessenta"] },
+  { q: "Quantos graus tem um círculo?", a: ["360", "trezentos e sessenta"] },
+  { q: "Qual é o valor de seno de 90 graus?", a: ["1"] },
+  { q: "Qual o nome do teorema que relaciona os lados de um triângulo retângulo?", a: ["pitagoras", "pitágoras", "teorema de pitagoras"] },
+  { q: "Qual o nome do cientista que descobriu a gravidade?", a: ["isaac newton", "newton"] },
+  { q: "Qual o nome do cientista que desenvolveu a teoria da relatividade?", a: ["albert einstein", "einstein"] },
+  { q: "Em que ano Einstein publicou a Teoria da Relatividade?", a: ["1905", "1915"] },
+  { q: "Qual o nome do pai da medicina?", a: ["hipocrates", "hipócrates"] },
 ];
+
+// ─── LEADERBOARD DE DROPS ──────────────────────────────────────────────────────
+function loadDropLeaderboard() { return loadJSON("./dropleaderboard.json", {}); }
+function saveDropLeaderboard(d) { saveJSON("./dropleaderboard.json", d); }
+
+function addDropWin(userId) {
+  const lb = loadDropLeaderboard();
+  lb[userId] = (lb[userId] ?? 0) + 1;
+  saveDropLeaderboard(lb);
+}
+
+// ─── SISTEMA ANTI-REPETIÇÃO DE DROPS (shuffle sem repetição) ──────────────────
+let dropQueue = [];
+
+function getNextDropQuestion() {
+  if (dropQueue.length === 0) {
+    // Embaralha todas as perguntas
+    dropQueue = [...DROPS_QUESTIONS_MASTER].sort(() => Math.random() - 0.5);
+    console.log(`[DROP] Fila reiniciada com ${dropQueue.length} perguntas embaralhadas.`);
+  }
+  return dropQueue.pop();
+}
 
 let dropActive = false;
 
@@ -211,30 +408,26 @@ const client = new Client({
 client.once("ready", async () => {
   const horaLog = new Date().toLocaleTimeString("pt-BR");
   console.log(`[${horaLog}] ✅ Bot online: ${client.user.tag} (PID: ${process.pid})`);
-  
+
   await registerSlashCommands();
   checkTempRoles();
   setInterval(checkTempRoles, 60_000);
   setInterval(checkStaleTickets, 5 * 60_000);
-  
-  // REMOVA as duas linhas antigas do triggerDrop() daqui de dentro
-  // e adicione este verificador que roda a cada 1 minuto
+
   setInterval(() => {
     const brtTime = new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" });
     const d = new Date(brtTime);
     const h = d.getHours();
     const m = d.getMinutes();
-
-    // Dispara apenas em horas PARES, entre 10h e 22h, exatamente no minuto 0 (ex: 20:00)
     if (h >= 10 && h <= 22 && h % 2 === 0 && m === 0) {
       triggerDrop();
     }
-  }, 60 * 1000); // 1 minuto
+  }, 60 * 1000);
 });
 
 async function triggerDrop(manual = false) {
   console.log(`[DROP] Tentando iniciar... dropActive=${dropActive} manual=${manual}`);
-  
+
   if (dropActive) {
     console.log('[DROP] Bloqueado — já tem drop ativo');
     return;
@@ -246,23 +439,24 @@ async function triggerDrop(manual = false) {
   if (!channel) { console.log('[DROP] Canal não encontrado'); return; }
 
   dropActive = true;
-  console.log(`[DROP] Drop iniciado no canal #${channel.name}`);
 
-  const item = DROPS_QUESTIONS[Math.floor(Math.random() * DROPS_QUESTIONS.length)];
+  const item = getNextDropQuestion();
   console.log(`[DROP] Pergunta: "${item.q}" | Respostas: ${item.a.join(', ')}`);
 
   const c = new ContainerBuilder()
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🎁 DROP RÁPIDO!\n\n> **${item.q}**\n\nResponda no chat em até **1 minuto** para ganhar um cargo VIP!\n*(Olheiro [5 Dias], Scrim Hoster ou Pic Perm)*`))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `## 🎁 DROP RÁPIDO!\n\n> **${item.q}**\n\nResponda no chat em até **1 minuto** para ganhar um cargo VIP!\n*(Olheiro [5 Dias], Scrim Hoster ou Pic Perm)*`
+    ))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Drops System`));
 
- await channel.send({ content: "@here", allowedMentions: { parse: ["everyone"] } }).catch(() => {});
-const sent = await channel.send({ components: [c], flags: MessageFlags.IsComponentsV2 }).catch((e) => {
-  console.log(`[DROP] Erro ao enviar mensagem: ${e.message}`);
-  dropActive = false;
-  return;
-});
-if (!sent) return;
+  await channel.send({ content: "@here", allowedMentions: { parse: ["everyone"] } }).catch(() => {});
+  const sent = await channel.send({ components: [c], flags: MessageFlags.IsComponentsV2 }).catch((e) => {
+    console.log(`[DROP] Erro ao enviar mensagem: ${e.message}`);
+    dropActive = false;
+    return;
+  });
+  if (!sent) return;
 
   const filter = m => !m.author.bot && m.channel.id === channel.id;
   const collector = channel.createMessageCollector({ filter, time: 60000 });
@@ -270,15 +464,19 @@ if (!sent) return;
   let answered = false;
 
   collector.on("collect", async m => {
-    console.log(`[DROP] Resposta recebida de ${m.author.tag}: "${m.content}"`);
     const answer = m.content.toLowerCase().trim();
     if (item.a.some(ans => answer.includes(ans))) {
       if (answered) return;
       answered = true;
       collector.stop("winner");
 
+      // Registra na leaderboard
+      addDropWin(m.author.id);
+
       const winC = new ContainerBuilder()
-        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🎉 TEMOS UM VENCEDOR!\n\nParabéns <@${m.author.id}>! Você acertou a resposta e ganhou o drop!\nVerifique suas DMs para escolher seu prêmio.`))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+          `## 🎉 TEMOS UM VENCEDOR!\n\nParabéns <@${m.author.id}>! Você acertou a resposta e ganhou o drop!\nVerifique suas DMs para escolher seu prêmio.`
+        ))
         .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Drops System`));
       await channel.send({ components: [winC], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
@@ -293,31 +491,32 @@ if (!sent) return;
         );
 
       const dmC = new ContainerBuilder()
-        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🎁 Você Venceu o Drop!\n\nVocê respondeu corretamente no chat e garantiu seu prêmio. Escolha abaixo qual cargo você deseja receber no servidor:`))
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+          `## 🎁 Você Venceu o Drop!\n\nVocê respondeu corretamente no chat e garantiu seu prêmio. Escolha abaixo qual cargo você deseja receber no servidor:`
+        ))
         .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Drops System`))
         .addActionRowComponents(new ActionRowBuilder().addComponents(dmSelect));
 
       await m.author.send({ components: [dmC], flags: MessageFlags.IsComponentsV2 }).catch(() => {
-        console.log(`[DROP] DM fechada para ${m.author.tag}, avisando no canal`);
         channel.send({ content: `<@${m.author.id}> ❌ Não consegui te enviar DM! Abre suas DMs e fala com a staff para resgatar o prêmio.` }).catch(() => {});
       });
-
-      console.log(`[DROP] Vencedor: ${m.author.tag}`);
     }
   });
 
   collector.on("end", (collected, reason) => {
     dropActive = false;
-    console.log(`[DROP] Encerrado. Razão: ${reason} | Respostas recebidas: ${collected.size}`);
     if (reason !== "winner") {
       const failC = new ContainerBuilder()
-        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### ⏰ O tempo esgotou!\n> Ninguém acertou o drop desta vez. A resposta era: **${item.a[0]}**`));
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+          `### ⏰ O tempo esgotou!\n> Ninguém acertou o drop desta vez. A resposta era: **${item.a[0]}**`
+        ));
       channel.send({ components: [failC], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
     }
   });
 }
 
+// ─── SLASH COMMANDS ────────────────────────────────────────────────────────────
 async function registerSlashCommands() {
   if (!CLIENT_ID) { console.warn("⚠️ CLIENT_ID não definido."); return; }
   const commands = [
@@ -409,6 +608,18 @@ async function registerSlashCommands() {
       .addChannelOption(o => o.setName("canal").setDescription("Canal (padrão: atual)").setRequired(false))
       .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
       .toJSON(),
+
+    // ─── NOVOS SLASH COMMANDS PARA DROPS (só admins) ──────────────────────────
+    new SlashCommandBuilder()
+      .setName("drop")
+      .setDescription("Dispara um drop manualmente (apenas admins)")
+      .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+      .toJSON(),
+
+    new SlashCommandBuilder()
+      .setName("dropleaderboard")
+      .setDescription("Mostra o ranking dos 10 melhores vencedores de drops")
+      .toJSON(),
   ];
 
   try {
@@ -495,11 +706,8 @@ async function checkStaleTickets() {
       ))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`));
 
-await ch.send({ content: `<@${info.openerId}> ${staffMentions}`, allowedMentions: { parse: ["users", "roles"] } }).catch(() => {});
-await ch.send({
-  components: [reminderContainer],
-  flags: MessageFlags.IsComponentsV2,
-}).catch(() => {});
+    await ch.send({ content: `<@${info.openerId}> ${staffMentions}`, allowedMentions: { parse: ["users", "roles"] } }).catch(() => {});
+    await ch.send({ components: [reminderContainer], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
 
     const opener = await guild.members.fetch(info.openerId).catch(() => null);
     if (opener) {
@@ -546,7 +754,7 @@ const IMAGE_WINDOW     = 10000;
 const MAX_MENTIONS     = 5;
 const DUP_WINDOW       = 30_000;
 
-const spamTracker = new Map();
+const spamTracker  = new Map();
 const pendingConfirm = new Map();
 
 function getSpam(userId) {
@@ -672,6 +880,7 @@ client.on("messageCreate", async (message) => {
 
   const member = message.member;
 
+  // ─── CANAL PENEIRA: só links do Roblox ──────────────────────────────────────
   if (message.channel.id === PENEIRA_CHANNEL_ID && !isStaff(member)) {
     if (!message.content.includes("roblox.com/")) {
       await message.delete().catch(() => {});
@@ -681,6 +890,7 @@ client.on("messageCreate", async (message) => {
     }
   }
 
+  // ─── BLOQUEIO DE TIKTOK ──────────────────────────────────────────────────────
   if (/(tiktok\.com|vt\.tiktok\.com)/i.test(message.content) && !isStaff(member)) {
     await message.delete().catch(() => {});
     const w = await message.channel.send(`<@${message.author.id}> ❌ Links do TikTok não são permitidos neste servidor.`).catch(() => null);
@@ -699,23 +909,56 @@ client.on("messageCreate", async (message) => {
     return;
   }
 
+  // ─── ANTI-SPAM ───────────────────────────────────────────────────────────────
   const blocked = await handleAntiSpam(message);
   if (blocked) return;
 
-  const inviteRegex = /discord(?:\.gg|app\.com\/invite|\.com\/invite)\/[a-zA-Z0-9]+/i;
-  if (inviteRegex.test(message.content) && member) {
+  // ─── BLOQUEIO DE CONVITES DISCORD & LINKS EXTERNOS (WhatsApp, outros) ────────
+  // Regexes para convites Discord E links do WhatsApp
+  const discordInviteRegex = /discord(?:\.gg|app\.com\/invite|\.com\/invite)\/[a-zA-Z0-9]+/i;
+  const whatsappLinkRegex  = /(?:chat\.whatsapp\.com|wa\.me)\/[a-zA-Z0-9?=&_-]+/i;
+  const externalLinkRegex  = /https?:\/\//i;
+
+  const hasDiscordInvite = discordInviteRegex.test(message.content);
+  const hasWhatsApp      = whatsappLinkRegex.test(message.content);
+
+  // Bloqueia WhatsApp em QUALQUER canal (exceto staff)
+  if (hasWhatsApp && !isStaff(member)) {
+    await message.delete().catch(() => {});
+    const isTicketChannel = message.channel.name?.startsWith("ticket-");
+    if (!isTicketChannel) {
+      const w = await message.channel.send(
+        `<@${message.author.id}> ❌ Links do **WhatsApp** não são permitidos neste servidor.`
+      ).catch(() => null);
+      if (w) setTimeout(() => w.delete().catch(() => {}), 8000);
+    }
+    const logCh = message.guild.channels.cache.get(LOG_CHANNEL_ID);
+    logCh?.send({ embeds: [new EmbedBuilder()
+      .setTitle("🚫 AutoMod — Link WhatsApp bloqueado")
+      .setThumbnail(message.author.displayAvatarURL({ size: 128 }))
+      .addFields(
+        { name: "Usuário", value: `<@${message.author.id}> (\`${message.author.tag}\`)`, inline: true },
+        { name: "Canal",   value: `<#${message.channel.id}>`, inline: true },
+        { name: "Conteúdo", value: message.content.slice(0, 500), inline: false },
+      )
+      .setColor(0xED4245).setFooter({ text: "PAFO — AutoMod", iconURL: SERVER_ICON }).setTimestamp()
+    ]}).catch(() => {});
+    return;
+  }
+
+  // Bloqueia convites Discord em canais não permitidos
+  if (hasDiscordInvite && member) {
     if (!isStaff(member)) {
-      const allowedChannels = [FREEAGENT_CHANNEL_ID, SCOUTING_CHANNEL_ID, PARCERIA_CHANNEL_ID, FREELINKS_CHANNEL_ID, LEAGUES_CHANNEL_ID];
       const isTicketChannel = message.channel.name?.startsWith("ticket-");
-      if (!allowedChannels.includes(message.channel.id) && !isTicketChannel) {
+      if (!INVITE_ALLOWED_CHANNELS.has(message.channel.id) && !isTicketChannel) {
         await message.delete().catch(() => {});
         try {
           const dmMsg = new ContainerBuilder()
             .addTextDisplayComponents(new TextDisplayBuilder().setContent(
               `## 🚫 Convite não permitido!\n\n` +
               `<@${message.author.id}>, você **não pode enviar convites** neste canal.\n\n` +
-              `> 🔒 Para manter a organização do servidor **PAFO**, links de convite são **restritos** a canais específicos ou precisam de autorização da staff.\n\n` +
-              `> ❓ Caso tenha dúvidas ou queira solicitar permissão, entre em contato com a equipe de moderação em <#1449068500567068804>.`
+              `> 🔒 Links de convite são **restritos** a canais específicos ou precisam de autorização da staff.\n\n` +
+              `> ❓ Caso tenha dúvidas, entre em contato com a moderação em <#1449068500567068804>.`
             ))
             .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Sistema de Moderação`));
           await message.author.send({ components: [dmMsg], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
@@ -737,6 +980,7 @@ client.on("messageCreate", async (message) => {
     }
   }
 
+  // ─── CANAL FREE AGENT: filtra mensagens de times ─────────────────────────────
   if (message.channel.id === FREEAGENT_CHANNEL_ID && !isStaff(member)) {
     if (!message.content.trim().toLowerCase().startsWith("!freeagent")) {
       const content = message.content.trim();
@@ -764,6 +1008,7 @@ client.on("messageCreate", async (message) => {
     }
   }
 
+  // ─── COMANDO !freeagent ───────────────────────────────────────────────────────
   if (message.content.trim().toLowerCase().startsWith("!freeagent")) {
     if (!member) return;
     const cdKey = `fa_${member.id}`;
@@ -821,7 +1066,7 @@ client.on("messageCreate", async (message) => {
   const content = message.content.trim().toLowerCase();
   const cmds = [
     "!verify","!rules","!booster","!info","!welcome","!loja","!ticket","!friendlys",
-    "!olheiro-rules","!scrimhoster-rules","!drops","!bio-reward","!parceria", "!drop",
+    "!olheiro-rules","!scrimhoster-rules","!drops","!bio-reward","!parceria","!drop",
   ];
   if (!cmds.includes(content)) return;
 
@@ -842,7 +1087,7 @@ client.on("messageCreate", async (message) => {
     "!friendlys":        () => cmdFriendlys(message.channel),
     "!olheiro-rules":    () => cmdOlheiroRules(message.channel),
     "!scrimhoster-rules":() => cmdScrimHosterRules(message.channel),
-"!drop": () => { dropActive = false; triggerDrop(true); },
+    "!drop":             () => { dropActive = false; triggerDrop(true); },
     "!drops":            () => cmdDrops(message.channel),
     "!bio-reward":       () => cmdBioReward(message.channel),
     "!parceria":         () => cmdParceria(message.channel),
@@ -879,7 +1124,6 @@ client.on("messageDelete", async (message) => {
     .setTimestamp();
 
   if (avatarURL) embed.setThumbnail(avatarURL);
-
   if (message.attachments.size > 0) {
     const urls = Array.from(message.attachments.values()).map(a => a.url).join("\n");
     embed.addFields({ name: "Anexos", value: urls.slice(0, 1024), inline: false });
@@ -936,7 +1180,7 @@ async function classifyFreeAgentMessage(content) {
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
         max_tokens: 10,
-        system: "Você é um classificador de mensagens de Discord de um servidor de futebol no Roblox (MPS/TCS/Soccer). Responda APENAS com uma palavra: JOGADOR ou TIME.\n\nJOGADOR = o próprio jogador se anunciando como free agent, procurando time, ou descrevendo suas habilidades. Exemplos: 'f/a cb', 'procuro time sou mc bom', 'sou gk disponível', 'f/a pe md', 'disponível sou um bom st'.\n\nTIME = um time/clube recrutando jogadores, divulgando vagas ou chamando para peneira. Exemplos: 'VAGAS PARA O BARCELONA', 'Real Madrid recruta', 'nosso time procura CB', 'peneira aberta', 'clique para entrar no time'.",
+        system: "Você é um classificador de mensagens de Discord de um servidor de futebol no Roblox (MPS/TCS/Soccer). Responda APENAS com uma palavra: JOGADOR ou TIME.\n\nJOGADOR = o próprio jogador se anunciando como free agent, procurando time, ou descrevendo suas habilidades.\n\nTIME = um time/clube recrutando jogadores, divulgando vagas ou chamando para peneira.",
         messages: [{ role: "user", content: `Classifique esta mensagem: "${content.slice(0, 300)}"` }]
       })
     });
@@ -970,7 +1214,6 @@ async function logPunishment(guild, { tipo, emoji, staffId, membroTag, membroId,
 
   if (motivo) embed.addFields({ name: "Motivo", value: motivo, inline: false });
   if (extra)  embed.addFields({ name: "Info", value: extra, inline: false });
-
   if (membro) embed.setThumbnail(membro.user.displayAvatarURL({ size: 128 }));
 
   embed.setColor(
@@ -986,11 +1229,44 @@ async function logPunishment(guild, { tipo, emoji, staffId, membroTag, membroId,
 function buildConfirmContainer({ emoji, title, description, targetId, motivo, extra }) {
   let text = `## ${emoji} ${title}\n\n${description}\n\n**Alvo:** <@${targetId}>\n**Motivo:** ${motivo ?? "Sem motivo"}`;
   if (extra) text += `\n**Extra:** ${extra}`;
-  
+
   return new ContainerBuilder()
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(text))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Sistema de Moderação`));
+}
+
+// ─── LEADERBOARD HELPER ───────────────────────────────────────────────────────
+async function buildLeaderboardContainer(guild) {
+  const lb = loadDropLeaderboard();
+  const sorted = Object.entries(lb).sort((a, b) => b[1] - a[1]).slice(0, 10);
+
+  if (sorted.length === 0) {
+    return new ContainerBuilder()
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🏆 Drop Leaderboard\n\n> Nenhuma vitória registrada ainda!`))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Drops System`));
+  }
+
+  const medals = ["🥇","🥈","🥉","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"];
+  let lines = "";
+
+  for (let i = 0; i < sorted.length; i++) {
+    const [userId, wins] = sorted[i];
+    try {
+      const member = await guild.members.fetch(userId).catch(() => null);
+      const name = member ? member.displayName : `<@${userId}>`;
+      lines += `${medals[i]} **${name}** — ${wins} vitória${wins !== 1 ? "s" : ""}\n`;
+    } catch {
+      lines += `${medals[i]} <@${userId}> — ${wins} vitória${wins !== 1 ? "s" : ""}\n`;
+    }
+  }
+
+  return new ContainerBuilder()
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🏆 Drop Leaderboard — Top 10`))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.trim()))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Drops System`));
 }
 
 client.on("interactionCreate", (i) => handleInteraction(i).catch(e => {
@@ -1000,41 +1276,45 @@ client.on("interactionCreate", (i) => handleInteraction(i).catch(e => {
 
 async function handleInteraction(interaction) {
 
-  // --- SISTEMA DE RESGATE DE DROP (TODOS TEMPORÁRIOS) ---
+  // ─── /drop (só admin) ────────────────────────────────────────────────────────
+  if (interaction.isChatInputCommand() && interaction.commandName === "drop") {
+    if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator))
+      return interaction.reply({ content: "❌ Apenas administradores podem usar este comando.", flags: MessageFlags.Ephemeral });
+
+    await interaction.reply({ content: "✅ Drop iniciado manualmente!", flags: MessageFlags.Ephemeral });
+    dropActive = false;
+    triggerDrop(true);
+    return;
+  }
+
+  // ─── /dropleaderboard ────────────────────────────────────────────────────────
+  if (interaction.isChatInputCommand() && interaction.commandName === "dropleaderboard") {
+    await interaction.deferReply();
+    const container = await buildLeaderboardContainer(interaction.guild);
+    return interaction.editReply({ components: [container], flags: MessageFlags.IsComponentsV2 });
+  }
+
+  // ─── SISTEMA DE RESGATE DE DROP ───────────────────────────────────────────────
   if (interaction.isStringSelectMenu() && interaction.customId.startsWith("drop_claim_")) {
     const userId = interaction.customId.replace("drop_claim_", "");
     if (interaction.user.id !== userId) return interaction.reply({ content: "❌ Este drop não é seu.", flags: MessageFlags.Ephemeral });
 
     await interaction.deferUpdate();
     const roleId = interaction.values[0];
-    
+
     const guild = await client.guilds.fetch(GUILD_ID).catch(() => null);
     if (!guild) return;
     const member = await guild.members.fetch(userId).catch(() => null);
     if (!member) return;
 
     try {
-      // 1. Adiciona o cargo ao membro
       await member.roles.add(roleId);
-
-      // 2. Regista no sistema temporário (5 dias)
       const dias = 5;
-      const expiresAt = Date.now() + dias * 86_400_000; // 5 dias em milissegundos
-      
-      // Carrega os dados atuais e remove entradas antigas do mesmo utilizador para esse cargo
+      const expiresAt = Date.now() + dias * 86_400_000;
       const data = loadTempRoles().filter(e => !(e.userId === userId && e.roleId === roleId));
-      
-      data.push({ 
-        userId, 
-        roleId, 
-        guildId: GUILD_ID, 
-        expiresAt, 
-        days: dias 
-      });
-      
+      data.push({ userId, roleId, guildId: GUILD_ID, expiresAt, days: dias });
       saveTempRoles(data);
 
-      // 3. Resposta de confirmação
       const confirmC = new ContainerBuilder()
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(
           `## ✅ Drop Resgatado com Sucesso!\n\n` +
@@ -1044,9 +1324,8 @@ async function handleInteraction(interaction) {
         ))
         .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Drops System`));
-      
-      await interaction.message.edit({ components: [confirmC], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
 
+      await interaction.message.edit({ components: [confirmC], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
     } catch (error) {
       console.error("Erro ao entregar cargo de drop:", error);
       await interaction.followUp({ content: "Houve um erro ao tentar entregar o seu cargo. Contacte um administrador.", flags: MessageFlags.Ephemeral });
@@ -1054,6 +1333,7 @@ async function handleInteraction(interaction) {
     return;
   }
 
+  // ─── /setroletemp ─────────────────────────────────────────────────────────────
   if (interaction.isChatInputCommand() && interaction.commandName === "setroletemp") {
     if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator))
       return interaction.reply({ content: "❌ Sem permissão.", flags: MessageFlags.Ephemeral });
@@ -1120,7 +1400,7 @@ async function handleInteraction(interaction) {
       targetId: target.id, motivo,
       extra: dias > 0 ? `Deletar mensagens dos últimos ${dias} dia(s)` : null,
     });
-    
+
     c.addActionRowComponents(new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(`confirm_ban_${target.id}_${dias}_${Date.now()}`).setLabel("Confirmar Ban").setStyle(ButtonStyle.Danger).setEmoji("🔨"),
       new ButtonBuilder().setCustomId("cancel_action").setLabel("Cancelar").setStyle(ButtonStyle.Secondary).setEmoji("❌"),
@@ -1150,7 +1430,7 @@ async function handleInteraction(interaction) {
           `Se acredita que o ban foi injusto, use o servidor de appeal:\n🔗 ${APPEAL_SERVER}`
         ))
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Sistema de Moderação`));
-      await (target?.send ?? interaction.guild.members.cache.get(targetId)?.send)?.({ components: [dm], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+      await target?.send({ components: [dm], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
     } catch {}
 
     try {
@@ -1238,7 +1518,7 @@ async function handleInteraction(interaction) {
       targetId: target.id, motivo,
       extra: `Duração: **${minutos} minuto(s)**`,
     });
-    
+
     c.addActionRowComponents(new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(`confirm_mute_${target.id}_${minutos}_${Date.now()}`).setLabel("Confirmar Mute").setStyle(ButtonStyle.Danger).setEmoji("🔇"),
       new ButtonBuilder().setCustomId("cancel_action").setLabel("Cancelar").setStyle(ButtonStyle.Secondary).setEmoji("❌"),
@@ -1356,7 +1636,7 @@ async function handleInteraction(interaction) {
         await target.send({ components: [dm], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
       } catch {}
       await interaction.guild.members.ban(target.id, { reason: `3ª Advertência: ${motivo} | Staff: ${interaction.user.tag}` }).catch(() => {});
-      
+
       const c = new ContainerBuilder()
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(
           `## 🔨 3ª Advertência — Banimento Aplicado\n\n**Membro:** <@${target.id}>\n**Motivo:** ${motivo}\n**Staff:** <@${interaction.user.id}>`
@@ -1475,7 +1755,7 @@ async function handleInteraction(interaction) {
       description: "Você tem certeza que deseja expulsar este membro?",
       targetId: target.id, motivo,
     });
-    
+
     c.addActionRowComponents(new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(`confirm_kick_${target.id}_${Date.now()}`).setLabel("Confirmar Kick").setStyle(ButtonStyle.Danger).setEmoji("👢"),
       new ButtonBuilder().setCustomId("cancel_action").setLabel("Cancelar").setStyle(ButtonStyle.Secondary).setEmoji("❌"),
@@ -1532,9 +1812,7 @@ async function handleInteraction(interaction) {
     } catch (e) {
       return interaction.reply({ content: `❌ Erro: ${e.message}`, flags: MessageFlags.Ephemeral });
     }
-
     await interaction.reply({ content: `🔒 Canal <#${canal.id}> travado com sucesso.`, flags: MessageFlags.Ephemeral });
-
     await canal.send({ embeds: [new EmbedBuilder()
       .setTitle("🔒 Canal Travado")
       .setDescription(`Este canal foi travado por <@${interaction.user.id}>. Nenhum membro pode enviar mensagens.`)
@@ -1558,9 +1836,7 @@ async function handleInteraction(interaction) {
     } catch (e) {
       return interaction.reply({ content: `❌ Erro: ${e.message}`, flags: MessageFlags.Ephemeral });
     }
-
     await interaction.reply({ content: `🔓 Canal <#${canal.id}> destravado com sucesso.`, flags: MessageFlags.Ephemeral });
-
     await canal.send({ embeds: [new EmbedBuilder()
       .setTitle("🔓 Canal Destravado")
       .setDescription(`Este canal foi destravado por <@${interaction.user.id}>.`)
@@ -1718,7 +1994,7 @@ async function handleInteraction(interaction) {
     interaction.editReply({ content: `✅ Ticket criado: <#${ticketCh.id}>` }).catch(() => {});
 
     const staffMentions = STAFF_ROLES.map(id => `<@&${id}>`).join(" ");
-await ticketCh.send({ content: `<@${user.id}> ${staffMentions}`, allowedMentions: { parse: ["users","roles"] } });
+    await ticketCh.send({ content: `<@${user.id}> ${staffMentions}`, allowedMentions: { parse: ["users","roles"] } });
 
     const c = new ContainerBuilder()
       .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(BANNERS.ticket)))
@@ -2023,7 +2299,7 @@ await ticketCh.send({ content: `<@${user.id}> ${staffMentions}`, allowedMentions
     return;
   }
 
-if (interaction.isButton() && interaction.customId.startsWith("ticket_claim_")) {
+  if (interaction.isButton() && interaction.customId.startsWith("ticket_claim_")) {
     if (!isStaff(interaction.member))
       return interaction.reply({ content: "❌ Apenas a staff pode reivindicar tickets.", flags: MessageFlags.Ephemeral });
 
@@ -2032,11 +2308,8 @@ if (interaction.isButton() && interaction.customId.startsWith("ticket_claim_")) 
       return interaction.reply({ content: "❌ Este ticket já foi reivindicado.", flags: MessageFlags.Ephemeral });
     claimedTickets.add(ch.id);
 
-    // Pega o openerId do ticketData, não do customId
     const data = ticketData.get(ch.id);
     const openerId = data?.openerId ?? interaction.customId.split("_")[3] ?? null;
-
-    console.log(`[TICKET CLAIM] Canal: ${ch.id} | Opener: ${openerId} | Staff: ${interaction.user.id}`);
 
     if (data) {
       data.claimerId = interaction.user.id;
@@ -2069,11 +2342,8 @@ if (interaction.isButton() && interaction.customId.startsWith("ticket_claim_")) 
         new ButtonBuilder().setCustomId(`panel_member_${ch.id}_${openerId}`).setLabel("Painel Membro").setStyle(ButtonStyle.Secondary).setEmoji("👤")
       ));
 
-    await interaction.message.edit({ components: [updated], flags: MessageFlags.IsComponentsV2 }).catch(e => {
-      console.log(`[TICKET CLAIM] Erro ao editar mensagem: ${e.message}`);
-    });
+    await interaction.message.edit({ components: [updated], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
 
-    // Envia o claimNotice em duas mensagens separadas para garantir o ping
     if (openerId) {
       await ch.send({ content: `<@${openerId}>`, allowedMentions: { parse: ["users"] } }).catch(() => {});
     }
@@ -2089,13 +2359,7 @@ if (interaction.isButton() && interaction.customId.startsWith("ticket_claim_")) 
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`));
 
-    await ch.send({
-      components: [claimNotice],
-      flags: MessageFlags.IsComponentsV2,
-    }).catch(e => {
-      console.log(`[TICKET CLAIM] Erro ao enviar claimNotice: ${e.message}`);
-    });
-
+    await ch.send({ components: [claimNotice], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
     return;
   }
 
@@ -2201,7 +2465,6 @@ if (interaction.isButton() && interaction.customId.startsWith("ticket_claim_")) 
     await interaction.message.edit({ components: [confirmed], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
 
     const guild = await client.guilds.fetch(GUILD_ID).catch(() => null);
-
     const targetChannelId = ticketType === "Compras" ? FEEDBACK_COMPRAS_ID : REVIEW_CHANNEL_ID;
     const revCh = guild ? await guild.channels.fetch(targetChannelId).catch(() => null) : null;
 
@@ -2380,25 +2643,15 @@ async function cmdInfo(channel) {
 async function cmdLoja(channel) {
   const c = new ContainerBuilder()
     .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(BANNERS.loja)))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `## <:PAFO:1455732882235719862> TABELA DE PREÇOS — CARGOS`
-    ))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## <:PAFO:1455732882235719862> TABELA DE PREÇOS — CARGOS`))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `🔍 <@&1449070067131224268> — **Olheiro** — **150 Robux**\n> Realize peneiras e observe jogadores`
-    ))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`🔍 <@&1449070067131224268> — **Olheiro** — **150 Robux**\n> Realize peneiras e observe jogadores`))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `⚔️ <@&1449070133040517262> — **Scrim Hoster** — **300 Robux**\n> Organize e hostear scrims oficiais`
-    ))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`⚔️ <@&1449070133040517262> — **Scrim Hoster** — **300 Robux**\n> Organize e hostear scrims oficiais`))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `📸 <@&1450118477179260948> — **Pic Perm** — **60 Robux**\n> Permissão para enviar imagens onde não é permitido`
-    ))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`📸 <@&1450118477179260948> — **Pic Perm** — **60 Robux**\n> Permissão para enviar imagens onde não é permitido`))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `🛠️ **Canal Personalizado** — **200 Robux**\n> Criação de canal personalizado da PAFO`
-    ))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`🛠️ **Canal Personalizado** — **200 Robux**\n> Criação de canal personalizado da PAFO`))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Large).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### 🚫 NÃO VENDEMOS CARGO DE ADM`))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# © 2026 PAFO`))
@@ -2460,9 +2713,7 @@ async function cmdFriendlys(channel) {
       `> • Respeite os **Friendly Rules** em todos os momentos`
     ))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Large).setDivider(true))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `**Mais informações:**\n<#1454098611754373296> | <#1449068500567068804>`
-    ))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`**Mais informações:**\n<#1454098611754373296> | <#1449068500567068804>`))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# © 2026 PAFO — Friendlys Rules`));
   await channel.send({ components: [c], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
 }
@@ -2481,24 +2732,11 @@ async function cmdOlheiroRules(channel) {
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
       `**📝 Modelo de mensagem para peneiras:**\n\n` +
-      "```\n" +
-      "# PENEIRA!\n" +
-      "**O real madrid está atrás de novas lendas!**\n\n" +
-      "# regras\n" +
-      "**- não hoggar\n" +
-      "- não fazer Ts\n" +
-      "- skille se puder\n" +
-      "- tocar independente de tudo\n" +
-      "- não passar fome**\n\n" +
-      "Link: [https://www.roblox.com/share?code=SEU_CODIGO&type=Server](https://www.roblox.com/share?code=SEU_CODIGO&type=Server)\n" +
-      "||@here||\n" +
-      "```"
+      "```\n# PENEIRA!\n**O real madrid está atrás de novas lendas!**\n\n# regras\n**- não hoggar\n- não fazer Ts\n- skille se puder\n- tocar independente de tudo\n- não passar fome**\n\nLink: https://www.roblox.com/share?code=SEU_CODIGO&type=Server\n||@here||\n```"
     ))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `**🛒 Como obter o cargo de Olheiro?**\n` +
-      `> Veja a loja em <#${LOJA_CHANNEL_ID}> e compre por **150 Robux**.\n` +
-      `> Depois abra um ticket para liberar o acesso.`
+      `**🛒 Como obter o cargo de Olheiro?**\n> Veja a loja em <#${LOJA_CHANNEL_ID}> e compre por **150 Robux**.\n> Depois abra um ticket para liberar o acesso.`
     ))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`⚠️ **Descumprir as regras resulta em remoção do cargo sem reembolso.**`))
@@ -2524,21 +2762,11 @@ async function cmdScrimHosterRules(channel) {
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
       `**📝 Modelo de mensagem para scrims:**\n\n` +
-      "```\n" +
-      "# LINK SCRIM\n" +
-      "# | - NOME DO ESTÁDIO\n" +
-      "# |- MODO (ex: clássico / futsal)\n" +
-      "# |- Juiz: SEU_NICK\n\n" +
-      "[https://www.roblox.com/share?code=SEU_CODIGO&type=Server](https://www.roblox.com/share?code=SEU_CODIGO&type=Server)\n" +
-      "@everyone @here\n" +
-      "```"
+      "```\n# LINK SCRIM\n# | - NOME DO ESTÁDIO\n# |- MODO (ex: clássico / futsal)\n# |- Juiz: SEU_NICK\n\nhttps://www.roblox.com/share?code=SEU_CODIGO&type=Server\n@everyone @here\n```"
     ))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `**🛒 Como obter o cargo de Scrim Hoster?**\n` +
-      `> Veja a loja em <#${LOJA_CHANNEL_ID}> e compre por **300 Robux**.\n` +
-      `> ⚠️ Precisa do cargo **Scrim Hoster** para realizar scrims.\n` +
-      `> Depois abra um ticket para liberar o acesso.`
+      `**🛒 Como obter o cargo de Scrim Hoster?**\n> Veja a loja em <#${LOJA_CHANNEL_ID}> e compre por **300 Robux**.\n> Depois abra um ticket para liberar o acesso.`
     ))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`⚠️ **Descumprir as regras resulta em remoção do cargo sem reembolso.**`))
@@ -2556,7 +2784,7 @@ async function cmdDrops(channel) {
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
       `### 🏆 Drop de Olheiro, Scrim Hoster ou Pic Perm!\n\n` +
-      `> 🕐 **Drops acontecem a cada 2 horas (10h as 00h)!**\n` +
+      `> 🕐 **Drops acontecem a cada 2 horas (10h às 22h)!**\n` +
       `> 🎯 O vencedor escolhe **um** dos cargos abaixo:\n\n` +
       `> 🔍 **Olheiro** — Realize peneiras oficiais\n` +
       `> ⚔️ **Scrim Hoster** — Organize scrims oficiais\n` +
@@ -2565,7 +2793,8 @@ async function cmdDrops(channel) {
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
       `**🤔 Qual será o próximo sortudo?**\nFique ligado no chat e seja o próximo a ganhar!\n\n` +
-      `✅ **Se ganhar:** O prêmio é entregue direto na sua DM!`
+      `✅ **Se ganhar:** O prêmio é entregue direto na sua DM!\n\n` +
+      `🏆 Use **/dropleaderboard** para ver os campeões dos drops!`
     ))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# © 2026 PAFO — Drops System`));
@@ -2577,34 +2806,25 @@ async function cmdBioReward(channel) {
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 🌟 RECOMPENSAS EXCLUSIVAS — BIO & TAG DO DISCORD`))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `### 🔗 Opção 1 — Link na Bio\n` +
-      `> Coloque **\`discord.gg/pafo1\`** na sua **bio do Discord**`
+      `### 🔗 Opção 1 — Link na Bio\n> Coloque **\`discord.gg/pafo1\`** na sua **bio do Discord**`
     ))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `**🎁 Recompensas:**\n` +
-      `> 🎰 **Mais chances** em todos os sorteios\n` +
-      `> 🏷️ **Cargo exclusivo** de apoiador da PAFO\n` +
-      `> ⏱️ **Cargo temporário** por **3 dias** à sua escolha:\n` +
-      `>   → 🔍 Olheiro **|** ⚔️ Scrim Hoster **|** 📸 Pic Perm`
+      `**🎁 Recompensas:**\n> 🎰 **Mais chances** em todos os sorteios\n> 🏷️ **Cargo exclusivo** de apoiador da PAFO\n` +
+      `> ⏱️ **Cargo temporário** por **3 dias** à sua escolha:\n>   → 🔍 Olheiro **|** ⚔️ Scrim Hoster **|** 📸 Pic Perm`
     ))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Large).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `### 🏷️ Opção 2 — Tag do Servidor\n` +
-      `> Adote a tag **\`PAFO\`** no seu perfil do Discord`
+      `### 🏷️ Opção 2 — Tag do Servidor\n> Adote a tag **\`PAFO\`** no seu perfil do Discord`
     ))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `**🎁 Recompensas:**\n` +
-      `> 🎰 **Mais chances** em todos os sorteios\n` +
-      `> 🏷️ **Cargo exclusivo** de apoiador da PAFO`
+      `**🎁 Recompensas:**\n> 🎰 **Mais chances** em todos os sorteios\n> 🏷️ **Cargo exclusivo** de apoiador da PAFO`
     ))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Large).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `### 📋 Como resgatar?\n` +
-      `> **1.** Coloque o link na bio **ou** adote a tag PAFO\n` +
-      `> **2.** Abra um ticket com um **print** comprovando\n` +
-      `> **3.** A staff verificará e liberará suas recompensas!\n\n` +
+      `### 📋 Como resgatar?\n> **1.** Coloque o link na bio **ou** adote a tag PAFO\n` +
+      `> **2.** Abra um ticket com um **print** comprovando\n> **3.** A staff verificará e liberará suas recompensas!\n\n` +
       `-# ⚠️ Remover o link/tag resulta na remoção automática dos benefícios.`
     ))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# © 2026 PAFO — Bio Reward System`))
@@ -2625,9 +2845,7 @@ async function cmdParceria(channel) {
       `*And you? What are you waiting for? Come in and take your team to the top of the classic Soccer!*`
     ))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `**🔗 https://discord.gg/GF5taZTAkB**\n*@everyone @here*`
-    ))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`**🔗 https://discord.gg/GF5taZTAkB**\n*@everyone @here*`))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Large).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
       `## 📋 Requisitos para Parceria\n\n` +
