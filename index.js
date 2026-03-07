@@ -73,7 +73,6 @@ const BLACKLIST_PATTERNS = [
   /cute-voice/i,
 ];
 
-// ─── Canais onde links/convites são PERMITIDOS ─────────────────────────────────
 const INVITE_ALLOWED_CHANNELS = new Set([
   FREEAGENT_CHANNEL_ID,
   SCOUTING_CHANNEL_ID,
@@ -89,7 +88,6 @@ const EMOJI_FREE_CHANNELS = new Set([
   FREELINKS_CHANNEL_ID,
 ]);
 
-// ─── PERGUNTAS DO DROP (250 perguntas, sem repetição via shuffle) ──────────────
 const DROPS_QUESTIONS_MASTER = [
   { q: "Que ano nasceu o Lula?", a: ["1945"] },
   { q: "Qual a capital do Brasil?", a: ["brasilia", "brasília"] },
@@ -114,7 +112,6 @@ const DROPS_QUESTIONS_MASTER = [
   { q: "Qual animal é conhecido como o rei da selva?", a: ["leao", "leão"] },
   { q: "Em qual continente fica o Egito?", a: ["africa", "áfrica"] },
   { q: "Quantas patas tem uma aranha?", a: ["8", "oito"] },
-  { q: "Qual é o idioma mais falado no mundo?", a: ["mandarim", "ingles", "inglês"] },
   { q: "Qual instrumento musical tem teclas pretas e brancas?", a: ["piano", "teclado"] },
   { q: "Quem foi o primeiro homem a pisar na lua?", a: ["neil armstrong", "armstrong"] },
   { q: "Qual é a raiz quadrada de 144?", a: ["12", "doze"] },
@@ -190,7 +187,6 @@ const DROPS_QUESTIONS_MASTER = [
   { q: "Qual super-herói tem um escudo de Vibranium?", a: ["capitao america", "capitão américa"] },
   { q: "Em que jogo existe a cidade de Los Santos?", a: ["gta v", "gta", "grand theft auto"] },
   { q: "Quantos anos tem um século?", a: ["100", "cem"] },
-  // ─── NOVAS PERGUNTAS (+150) ────────────────────────────────────────────────
   { q: "Qual é o resultado de 7 x 7?", a: ["49", "quarenta e nove"] },
   { q: "Qual a capital da Itália?", a: ["roma"] },
   { q: "Qual a capital da Espanha?", a: ["madrid"] },
@@ -218,18 +214,15 @@ const DROPS_QUESTIONS_MASTER = [
   { q: "Qual é o planeta mais distante do Sol?", a: ["netuno"] },
   { q: "Qual é o planeta mais quente do sistema solar?", a: ["venus", "vênus"] },
   { q: "Qual é o planeta mais frio do sistema solar?", a: ["netuno"] },
-  { q: "Qual é o maior satélite natural de Júpiter?", a: ["ganymede", "ganimedes"] },
   { q: "Em que ano foi lançado o primeiro iPhone?", a: ["2007"] },
   { q: "Quem fundou a Apple?", a: ["steve jobs"] },
   { q: "Quem fundou a Amazon?", a: ["jeff bezos"] },
   { q: "Quem fundou o Facebook?", a: ["mark zuckerberg", "zuckerberg"] },
   { q: "Quem fundou a Tesla?", a: ["elon musk"] },
-  { q: "Em que ano a internet foi inventada?", a: ["1969", "1991"] },
   { q: "Qual linguagem de programação tem um logo de cobra?", a: ["python"] },
   { q: "O que significa HTML?", a: ["hyper text markup language"] },
   { q: "O que significa CPU?", a: ["central processing unit", "unidade de processamento central"] },
   { q: "Qual é o maior número de um byte?", a: ["255"] },
-  { q: "Qual é a velocidade da luz (aproximada)?", a: ["300000 km/s", "300.000 km/s", "3x10^8"] },
   { q: "Qual o elemento mais abundante na crosta terrestre?", a: ["oxigenio", "oxigênio"] },
   { q: "Qual o gás mais abundante na atmosfera terrestre?", a: ["nitrogenio", "nitrogênio"] },
   { q: "Quantos cromossomos tem um ser humano?", a: ["46"] },
@@ -240,7 +233,6 @@ const DROPS_QUESTIONS_MASTER = [
   { q: "Qual o órgão responsável por filtrar o sangue?", a: ["rim", "rins"] },
   { q: "Qual a vitamina produzida pelo sol?", a: ["vitamina d"] },
   { q: "Quantas estrelas tem a bandeira do Brasil?", a: ["27"] },
-  { q: "Qual a ordem dos colores da bandeira do Brasil?", a: ["verde amarelo azul branco"] },
   { q: "Em que ano o Brasil foi fundado?", a: ["1822"] },
   { q: "Quem proclamou a independência do Brasil?", a: ["dom pedro", "dom pedro i", "pedro i"] },
   { q: "Em que cidade fica o Maracanã?", a: ["rio de janeiro"] },
@@ -275,71 +267,52 @@ const DROPS_QUESTIONS_MASTER = [
   { q: "Qual o nome do melhor amigo do Bob Esponja?", a: ["patrick"] },
   { q: "Qual o nome do vizinho do Bob Esponja?", a: ["lula molusco", "squidward"] },
   { q: "Qual personagem diz 'Ao infinito e além!'?", a: ["buzz lightyear"] },
-  { q: "Qual personagem diz 'Hakuna Matata'?", a: ["timon e pumba", "timon", "simba"] },
   { q: "Qual filme Disney tem a música 'Let It Go'?", a: ["frozen"] },
   { q: "Qual é o nome da princesa de Frozen?", a: ["elsa", "anna"] },
   { q: "Qual é o nome do boneco de neve em Frozen?", a: ["olaf"] },
   { q: "Quantos anões tem Branca de Neve?", a: ["7", "sete"] },
   { q: "Qual é o nome do genio em Aladdin?", a: ["genio", "gênio"] },
   { q: "Qual o nome do peixe pai em Procurando Nemo?", a: ["marlin"] },
-  { q: "Em que cidade se passa Divertida Mente?", a: ["san francisco"] },
-  { q: "Qual o nome da personagem principal de Moana?", a: ["moana"] },
   { q: "Qual é a cor favorita do Hulk?", a: ["verde"] },
   { q: "Qual o nome verdadeiro do Batman?", a: ["bruce wayne"] },
   { q: "Qual o nome verdadeiro do Superman?", a: ["clark kent"] },
   { q: "Qual o nome verdadeiro do Homem Aranha?", a: ["peter parker"] },
   { q: "Qual o nome verdadeiro do Homem de Ferro?", a: ["tony stark"] },
   { q: "Qual o nome verdadeiro do Capitão América?", a: ["steve rogers"] },
-  { q: "Qual é a pedra do Infinito verde em Vingadores?", a: ["tempo"] },
   { q: "Quantas Pedras do Infinito existem?", a: ["6", "seis"] },
   { q: "Qual personagem diz 'Eu sou Groot'?", a: ["groot"] },
   { q: "Qual o planeta de origem do Superman?", a: ["krypton"] },
-  { q: "Em que jogo se diz 'It's dangerous to go alone'?", a: ["zelda", "the legend of zelda"] },
-  { q: "Qual o animal símbolo do WWF (fundo mundial para a natureza)?", a: ["panda"] },
-  { q: "Qual a flor nacional do Brasil?", a: ["cattleya labiata", "orquidea", "orquídea"] },
-  { q: "Qual a árvore símbolo do Brasil?", a: ["ipê amarelo", "pau brasil"] },
-  { q: "Qual o pássaro símbolo do Brasil?", a: ["sabia", "sabiá"] },
+  { q: "Qual o animal símbolo do WWF?", a: ["panda"] },
   { q: "Qual o esporte mais popular do Brasil?", a: ["futebol"] },
   { q: "Qual o país de origem do samba?", a: ["brasil"] },
   { q: "Qual o país de origem do tango?", a: ["argentina"] },
-  { q: "Qual o país de origem do flamenco?", a: ["espanha"] },
   { q: "Quantas notas tem a escala musical?", a: ["7", "sete"] },
-  { q: "Qual a nota musical que vem depois de Mi?", a: ["fa", "fá"] },
   { q: "Quantas cordas tem um violão padrão?", a: ["6", "seis"] },
   { q: "Quantas teclas tem um piano padrão?", a: ["88"] },
-  { q: "Qual o instrumento mais antigo do mundo?", a: ["flauta"] },
   { q: "Quem compôs a Quinta Sinfonia?", a: ["beethoven"] },
-  { q: "Qual o nome do rei da selva em 'O Rei Leão'?", a: ["mufasa", "simba"] },
-  { q: "Em que continente fica o Quênia?", a: ["africa", "áfrica"] },
   { q: "Qual o nome do maior lago do mundo?", a: ["mar caspio", "mar cáspio"] },
   { q: "Qual a maior floresta tropical do mundo?", a: ["amazonia", "amazônia"] },
   { q: "Em que país fica o Taj Mahal?", a: ["india", "índia"] },
   { q: "Em que país fica a Grande Muralha?", a: ["china"] },
   { q: "Em que país fica o Coliseu?", a: ["italia", "itália", "roma"] },
   { q: "Em que país fica a Estátua da Liberdade?", a: ["estados unidos", "eua"] },
-  { q: "Qual a profundidade máxima do oceano (Fossa das Marianas, aproximada)?", a: ["11km", "11 km", "11000m"] },
   { q: "Quantas horas tem uma semana?", a: ["168"] },
   { q: "Quantos dias tem o mês de fevereiro em ano não bissexto?", a: ["28"] },
   { q: "Qual o resultado de 15 x 15?", a: ["225"] },
   { q: "Qual o resultado de 12 x 12?", a: ["144"] },
   { q: "Quanto é 2 elevado a 10?", a: ["1024"] },
-  { q: "Qual é o número de Avogadro (potência)?", a: ["6.02 x 10^23", "6x10^23"] },
   { q: "Qual o nome do processo de transformação de larva em borboleta?", a: ["metamorfose"] },
   { q: "Qual o nome da ciência que estuda os insetos?", a: ["entomologia"] },
-  { q: "Qual o nome da ciência que estuda as estrelas?", a: ["astronomia", "astrofisica"] },
   { q: "Qual o nome da ciência que estuda os fósseis?", a: ["paleontologia"] },
   { q: "Qual o nome da ciência que estuda o comportamento humano?", a: ["psicologia"] },
   { q: "Qual o nome da ciência que estuda os terremotos?", a: ["sismologia"] },
   { q: "Qual o nome dado à camada mais externa da Terra?", a: ["crosta"] },
-  { q: "Qual o nome do processo que transforma a uva em vinho?", a: ["fermentacao", "fermentação"] },
   { q: "Qual o país que mais produz café no mundo?", a: ["brasil"] },
-  { q: "Qual o país que mais produz petróleo no mundo?", a: ["estados unidos", "eua", "arabia saudita"] },
   { q: "Quem escreveu 'A Divina Comédia'?", a: ["dante", "dante alighieri"] },
   { q: "Quem escreveu '1984'?", a: ["george orwell", "orwell"] },
   { q: "Quem escreveu 'Harry Potter'?", a: ["j.k. rowling", "rowling"] },
   { q: "Quem escreveu 'O Pequeno Príncipe'?", a: ["antoine de saint-exupery", "saint-exupery"] },
   { q: "Qual o nome do detetive mais famoso da literatura?", a: ["sherlock holmes"] },
-  { q: "Qual o personagem que diz 'Elementary, my dear Watson'?", a: ["sherlock holmes"] },
   { q: "Qual o nome do criador do Sherlock Holmes?", a: ["arthur conan doyle", "conan doyle"] },
   { q: "Quantas letras tem o alfabeto português?", a: ["26"] },
   { q: "Qual a última letra do alfabeto?", a: ["z"] },
@@ -351,15 +324,69 @@ const DROPS_QUESTIONS_MASTER = [
   { q: "Qual é a raiz quadrada de 256?", a: ["16"] },
   { q: "Quantos graus tem um triângulo equilátero em cada ângulo?", a: ["60", "sessenta"] },
   { q: "Quantos graus tem um círculo?", a: ["360", "trezentos e sessenta"] },
-  { q: "Qual é o valor de seno de 90 graus?", a: ["1"] },
-  { q: "Qual o nome do teorema que relaciona os lados de um triângulo retângulo?", a: ["pitagoras", "pitágoras", "teorema de pitagoras"] },
   { q: "Qual o nome do cientista que descobriu a gravidade?", a: ["isaac newton", "newton"] },
   { q: "Qual o nome do cientista que desenvolveu a teoria da relatividade?", a: ["albert einstein", "einstein"] },
-  { q: "Em que ano Einstein publicou a Teoria da Relatividade?", a: ["1905", "1915"] },
   { q: "Qual o nome do pai da medicina?", a: ["hipocrates", "hipócrates"] },
+  { q: "Qual time ganhou a Copa do Mundo de 2018?", a: ["franca", "frança"] },
+  { q: "Qual time ganhou a Copa do Mundo de 2010?", a: ["espanha"] },
+  { q: "Qual time ganhou a Copa do Mundo de 2006?", a: ["italia", "itália"] },
+  { q: "Qual time ganhou a Copa do Mundo de 2002?", a: ["brasil"] },
+  { q: "Qual time ganhou a Copa do Mundo de 1998?", a: ["franca", "frança"] },
+  { q: "Qual time ganhou a Copa do Mundo de 1994?", a: ["brasil"] },
+  { q: "Qual time ganhou a Copa do Mundo de 1970?", a: ["brasil"] },
+  { q: "Qual foi o artilheiro da Copa do Mundo de 2022?", a: ["mbappe", "mbappé", "kylian mbappe"] },
+  { q: "Quantos gols o Brasil marcou na Copa de 2014 contra a Alemanha?", a: ["1", "um"] },
+  { q: "Quantos gols a Alemanha marcou contra o Brasil na Copa de 2014?", a: ["7", "sete"] },
+  { q: "Quem é o maior artilheiro da história do futebol?", a: ["cristiano ronaldo", "cr7"] },
+  { q: "Quem tem mais Bolas de Ouro: Messi ou Ronaldo?", a: ["messi"] },
+  { q: "Quantas Copas do Mundo a Itália ganhou?", a: ["4", "quatro"] },
+  { q: "Quantas Copas do Mundo a França ganhou?", a: ["2", "duas"] },
+  { q: "Quantas Copas do Mundo a Espanha ganhou?", a: ["1", "uma"] },
+  { q: "Qual a camisa que Pelé usava no Santos?", a: ["10", "dez"] },
+  { q: "Qual clube tem mais títulos da Champions League?", a: ["real madrid"] },
+  { q: "Qual clube tem mais títulos da Serie A italiana?", a: ["juventus"] },
+  { q: "Qual clube tem mais títulos da Premier League?", a: ["manchester united"] },
+  { q: "Qual clube tem mais títulos de La Liga?", a: ["real madrid"] },
+  { q: "Qual clube tem mais títulos do Campeonato Brasileiro?", a: ["palmeiras"] },
+  { q: "Qual clube tem mais títulos da Copa do Brasil?", a: ["cruzeiro"] },
+  { q: "Em que clube Neymar começou a carreira?", a: ["santos"] },
+  { q: "Em que clube Ronaldinho Gaúcho foi campeão da Champions?", a: ["barcelona"] },
+  { q: "Em que ano o Flamengo ganhou o Mundial de Clubes?", a: ["nao ganhou", "nunca ganhou", "não ganhou"] },
+  { q: "Qual foi o primeiro clube de Ronaldo Fenômeno?", a: ["cruzeiro"] },
+  { q: "Quantas copas o Brasil ganhou seguidas entre 1958 e 1970?", a: ["3", "tres", "três"] },
+  { q: "Qual foi o goleiro do Brasil na Copa de 2002?", a: ["marcos"] },
+  { q: "Quem fez o gol do Brasil na final da Copa de 2002?", a: ["ronaldo"] },
+  { q: "Qual era o apelido de Ronaldo Luís Nazário?", a: ["fenomeno", "fenômeno", "il fenomeno"] },
+  { q: "Em que posição Cafu jogava?", a: ["lateral direito", "lateral"] },
+  { q: "Qual jogador ficou famoso pelo drible 'elástico'?", a: ["ronaldinho", "ronaldinho gaucho", "ronaldinho gaúcho"] },
+  { q: "Qual é o estádio do Real Madrid?", a: ["bernabeu", "bernabéu", "santiago bernabeu"] },
+  { q: "Qual é o estádio do Barcelona?", a: ["camp nou"] },
+  { q: "Qual é o estádio do Manchester United?", a: ["old trafford"] },
+  { q: "Qual é o estádio do Bayern de Munique?", a: ["allianz arena"] },
+  { q: "Em que posição Ronaldinho Gaúcho jogava?", a: ["meia", "atacante", "meia atacante"] },
+  { q: "Quantas Copas do Mundo a Inglaterra ganhou?", a: ["1", "uma"] },
+  { q: "Em que ano a Inglaterra ganhou a Copa do Mundo?", a: ["1966"] },
+  { q: "Qual jogador foi chamado de 'O Fenômeno'?", a: ["ronaldo", "ronaldo fenomeno"] },
+  { q: "Qual é a seleção com mais títulos da Copa América?", a: ["argentina", "uruguai"] },
+  { q: "Qual foi o estádio da final da Copa de 2022?", a: ["lusail", "estadio lusail"] },
+  { q: "Qual país sediou a Copa do Mundo de 2022?", a: ["catar", "qatar"] },
+  { q: "Qual país sediou a Copa do Mundo de 2018?", a: ["russia", "rússia"] },
+  { q: "Em qual posição joga Vinicius Jr?", a: ["atacante", "ponta esquerda", "ponta"] },
+  { q: "Por qual clube Vinicius Jr joga atualmente?", a: ["real madrid"] },
+  { q: "Em qual clube Rodrygo joga?", a: ["real madrid"] },
+  { q: "Em qual posição joga um goleiro?", a: ["goleiro", "gol"] },
+  { q: "Quantos pênaltis são cobrados em uma disputa de pênalti normal?", a: ["5", "cinco"] },
+  { q: "Quantos minutos tem um jogo normal de futebol?", a: ["90", "noventa"] },
+  { q: "O que é hat-trick no futebol?", a: ["3 gols", "tres gols", "três gols"] },
+  { q: "Qual é o maior goleador da história da Seleção Brasileira?", a: ["neymar", "neymar jr"] },
+  { q: "Qual é o apelido do Zico?", a: ["galinho de quintino", "galinho"] },
+  { q: "Qual clube é chamado de 'Mengão'?", a: ["flamengo"] },
+  { q: "Qual clube é chamado de 'Timão'?", a: ["corinthians"] },
+  { q: "Qual clube é chamado de 'Tricolor'?", a: ["fluminense", "sao paulo", "são paulo", "gremio", "grêmio"] },
+  { q: "Qual clube é chamado de 'Alviverde'?", a: ["palmeiras", "coritiba"] },
+  { q: "Qual a posição do Thiago Silva no campo?", a: ["zagueiro"] },
 ];
 
-// ─── LEADERBOARD DE DROPS ──────────────────────────────────────────────────────
 function loadDropLeaderboard() { return loadJSON("./dropleaderboard.json", {}); }
 function saveDropLeaderboard(d) { saveJSON("./dropleaderboard.json", d); }
 
@@ -369,12 +396,10 @@ function addDropWin(userId) {
   saveDropLeaderboard(lb);
 }
 
-// ─── SISTEMA ANTI-REPETIÇÃO DE DROPS (shuffle sem repetição) ──────────────────
 let dropQueue = [];
 
 function getNextDropQuestion() {
   if (dropQueue.length === 0) {
-    // Embaralha todas as perguntas
     dropQueue = [...DROPS_QUESTIONS_MASTER].sort(() => Math.random() - 0.5);
     console.log(`[DROP] Fila reiniciada com ${dropQueue.length} perguntas embaralhadas.`);
   }
@@ -425,7 +450,7 @@ client.once("ready", async () => {
   }, 60 * 1000);
 });
 
-async function triggerDrop(manual = false) {
+async function triggerDrop(manual = false, customQuestion = null) {
   console.log(`[DROP] Tentando iniciar... dropActive=${dropActive} manual=${manual}`);
 
   if (dropActive) {
@@ -440,7 +465,7 @@ async function triggerDrop(manual = false) {
 
   dropActive = true;
 
-  const item = getNextDropQuestion();
+  const item = customQuestion ?? getNextDropQuestion();
   console.log(`[DROP] Pergunta: "${item.q}" | Respostas: ${item.a.join(', ')}`);
 
   const c = new ContainerBuilder()
@@ -470,7 +495,6 @@ async function triggerDrop(manual = false) {
       answered = true;
       collector.stop("winner");
 
-      // Registra na leaderboard
       addDropWin(m.author.id);
 
       const winC = new ContainerBuilder()
@@ -516,7 +540,6 @@ async function triggerDrop(manual = false) {
   });
 }
 
-// ─── SLASH COMMANDS ────────────────────────────────────────────────────────────
 async function registerSlashCommands() {
   if (!CLIENT_ID) { console.warn("⚠️ CLIENT_ID não definido."); return; }
   const commands = [
@@ -609,10 +632,11 @@ async function registerSlashCommands() {
       .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
       .toJSON(),
 
-    // ─── NOVOS SLASH COMMANDS PARA DROPS (só admins) ──────────────────────────
     new SlashCommandBuilder()
       .setName("drop")
       .setDescription("Dispara um drop manualmente (apenas admins)")
+      .addStringOption(o => o.setName("pergunta").setDescription("Pergunta personalizada (opcional)").setRequired(false))
+      .addStringOption(o => o.setName("resposta").setDescription("Resposta(s) aceita(s) separadas por vírgula (opcional)").setRequired(false))
       .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
       .toJSON(),
 
@@ -689,12 +713,20 @@ async function checkStaleTickets() {
   for (const [channelId, info] of data.entries()) {
     if (info.reminderSent) continue;
     if (!info.createdAt) continue;
-    if (now - info.createdAt < TWO_HOURS) continue;
 
     const guild = client.guilds.cache.get(GUILD_ID);
     if (!guild) continue;
     const ch = guild.channels.cache.get(channelId);
     if (!ch) continue;
+
+    let lastMessageTime = info.createdAt;
+    try {
+      const msgs = await ch.messages.fetch({ limit: 10 });
+      const lastMsg = msgs.filter(m => !m.author?.bot).first();
+      if (lastMsg) lastMessageTime = lastMsg.createdTimestamp;
+    } catch {}
+
+    if (now - lastMessageTime < TWO_HOURS) continue;
 
     const staffMentions = STAFF_ROLES.map(id => `<@&${id}>`).join(" ");
 
@@ -716,7 +748,7 @@ async function checkStaleTickets() {
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## ⏰ Seu Ticket Ainda Não Foi Atendido`))
         .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-          `**Ticket:** \`${info.ticketName}\`\n**Tipo:** ${info.label}\n\nSeu ticket está aberto há **2 horas** sem resposta.\nAcesse o canal para continuar ou aguarde a staff.`
+          `**Ticket:** \`${info.ticketName}\`\n**Tipo:** ${info.label}\n\nSeu ticket está aberto há **2 horas** sem mensagem.\nAcesse o canal para continuar ou aguarde a staff.`
         ))
         .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`));
@@ -880,7 +912,6 @@ client.on("messageCreate", async (message) => {
 
   const member = message.member;
 
-  // ─── CANAL PENEIRA: só links do Roblox ──────────────────────────────────────
   if (message.channel.id === PENEIRA_CHANNEL_ID && !isStaff(member)) {
     if (!message.content.includes("roblox.com/")) {
       await message.delete().catch(() => {});
@@ -890,7 +921,6 @@ client.on("messageCreate", async (message) => {
     }
   }
 
-  // ─── BLOQUEIO DE TIKTOK ──────────────────────────────────────────────────────
   if (/(tiktok\.com|vt\.tiktok\.com)/i.test(message.content) && !isStaff(member)) {
     await message.delete().catch(() => {});
     const w = await message.channel.send(`<@${message.author.id}> ❌ Links do TikTok não são permitidos neste servidor.`).catch(() => null);
@@ -909,20 +939,15 @@ client.on("messageCreate", async (message) => {
     return;
   }
 
-  // ─── ANTI-SPAM ───────────────────────────────────────────────────────────────
   const blocked = await handleAntiSpam(message);
   if (blocked) return;
 
-  // ─── BLOQUEIO DE CONVITES DISCORD & LINKS EXTERNOS (WhatsApp, outros) ────────
-  // Regexes para convites Discord E links do WhatsApp
   const discordInviteRegex = /discord(?:\.gg|app\.com\/invite|\.com\/invite)\/[a-zA-Z0-9]+/i;
   const whatsappLinkRegex  = /(?:chat\.whatsapp\.com|wa\.me)\/[a-zA-Z0-9?=&_-]+/i;
-  const externalLinkRegex  = /https?:\/\//i;
 
   const hasDiscordInvite = discordInviteRegex.test(message.content);
   const hasWhatsApp      = whatsappLinkRegex.test(message.content);
 
-  // Bloqueia WhatsApp em QUALQUER canal (exceto staff)
   if (hasWhatsApp && !isStaff(member)) {
     await message.delete().catch(() => {});
     const isTicketChannel = message.channel.name?.startsWith("ticket-");
@@ -946,7 +971,6 @@ client.on("messageCreate", async (message) => {
     return;
   }
 
-  // Bloqueia convites Discord em canais não permitidos
   if (hasDiscordInvite && member) {
     if (!isStaff(member)) {
       const isTicketChannel = message.channel.name?.startsWith("ticket-");
@@ -980,7 +1004,6 @@ client.on("messageCreate", async (message) => {
     }
   }
 
-  // ─── CANAL FREE AGENT: filtra mensagens de times ─────────────────────────────
   if (message.channel.id === FREEAGENT_CHANNEL_ID && !isStaff(member)) {
     if (!message.content.trim().toLowerCase().startsWith("!freeagent")) {
       const content = message.content.trim();
@@ -1008,7 +1031,6 @@ client.on("messageCreate", async (message) => {
     }
   }
 
-  // ─── COMANDO !freeagent ───────────────────────────────────────────────────────
   if (message.content.trim().toLowerCase().startsWith("!freeagent")) {
     if (!member) return;
     const cdKey = `fa_${member.id}`;
@@ -1067,6 +1089,7 @@ client.on("messageCreate", async (message) => {
   const cmds = [
     "!verify","!rules","!booster","!info","!welcome","!loja","!ticket","!friendlys",
     "!olheiro-rules","!scrimhoster-rules","!drops","!bio-reward","!parceria","!drop",
+    "!vips",
   ];
   if (!cmds.includes(content)) return;
 
@@ -1091,6 +1114,7 @@ client.on("messageCreate", async (message) => {
     "!drops":            () => cmdDrops(message.channel),
     "!bio-reward":       () => cmdBioReward(message.channel),
     "!parceria":         () => cmdParceria(message.channel),
+    "!vips":             () => cmdVips(message.channel),
   };
   return map[content]?.();
 });
@@ -1236,7 +1260,6 @@ function buildConfirmContainer({ emoji, title, description, targetId, motivo, ex
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Sistema de Moderação`));
 }
 
-// ─── LEADERBOARD HELPER ───────────────────────────────────────────────────────
 async function buildLeaderboardContainer(guild) {
   const lb = loadDropLeaderboard();
   const sorted = Object.entries(lb).sort((a, b) => b[1] - a[1]).slice(0, 10);
@@ -1276,25 +1299,35 @@ client.on("interactionCreate", (i) => handleInteraction(i).catch(e => {
 
 async function handleInteraction(interaction) {
 
-  // ─── /drop (só admin) ────────────────────────────────────────────────────────
   if (interaction.isChatInputCommand() && interaction.commandName === "drop") {
     if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator))
       return interaction.reply({ content: "❌ Apenas administradores podem usar este comando.", flags: MessageFlags.Ephemeral });
 
-    await interaction.reply({ content: "✅ Drop iniciado manualmente!", flags: MessageFlags.Ephemeral });
-    dropActive = false;
-    triggerDrop(true);
+    const perguntaCustom = interaction.options.getString("pergunta");
+    const respostaCustom = interaction.options.getString("resposta");
+
+    if (perguntaCustom && respostaCustom) {
+      const respostas = respostaCustom.split(",").map(r => r.trim().toLowerCase()).filter(r => r.length > 0);
+      if (respostas.length === 0) {
+        return interaction.reply({ content: "❌ Forneça pelo menos uma resposta válida.", flags: MessageFlags.Ephemeral });
+      }
+      await interaction.reply({ content: "✅ Drop iniciado com pergunta personalizada!", flags: MessageFlags.Ephemeral });
+      dropActive = false;
+      triggerDrop(true, { q: perguntaCustom, a: respostas });
+    } else {
+      await interaction.reply({ content: "✅ Drop iniciado manualmente!", flags: MessageFlags.Ephemeral });
+      dropActive = false;
+      triggerDrop(true);
+    }
     return;
   }
 
-  // ─── /dropleaderboard ────────────────────────────────────────────────────────
   if (interaction.isChatInputCommand() && interaction.commandName === "dropleaderboard") {
     await interaction.deferReply();
     const container = await buildLeaderboardContainer(interaction.guild);
     return interaction.editReply({ components: [container], flags: MessageFlags.IsComponentsV2 });
   }
 
-  // ─── SISTEMA DE RESGATE DE DROP ───────────────────────────────────────────────
   if (interaction.isStringSelectMenu() && interaction.customId.startsWith("drop_claim_")) {
     const userId = interaction.customId.replace("drop_claim_", "");
     if (interaction.user.id !== userId) return interaction.reply({ content: "❌ Este drop não é seu.", flags: MessageFlags.Ephemeral });
@@ -1333,7 +1366,6 @@ async function handleInteraction(interaction) {
     return;
   }
 
-  // ─── /setroletemp ─────────────────────────────────────────────────────────────
   if (interaction.isChatInputCommand() && interaction.commandName === "setroletemp") {
     if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator))
       return interaction.reply({ content: "❌ Sem permissão.", flags: MessageFlags.Ephemeral });
@@ -1919,6 +1951,29 @@ async function handleInteraction(interaction) {
     return interaction.reply({ components: [c], flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 });
   }
 
+  if (interaction.isButton() && interaction.customId.startsWith("vip_buy_")) {
+    const tipo = interaction.customId.replace("vip_buy_", "");
+    const labels = { bronze: "Vip Bronze <:vip_bronze:1479602783954141298>", silver: "Vip Silver <:prata:1479606442507108524>", golden: "Vip Golden <:vip_ouro:1479606540926189670>" };
+    const precos = {
+      bronze: "250 <:Robux:1463175023366897798> | 10,00 <:pix:1476995676247298190>",
+      silver: "350 <:Robux:1463175023366897798> | 17,00 <:pix:1476995676247298190>",
+      golden: "500 <:Robux:1463175023366897798> | 25,00 <:pix:1476995676247298190>",
+    };
+    const c = new ContainerBuilder()
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+        `## 🛒 Comprar ${labels[tipo]}\n\n` +
+        `**Preço:** ${precos[tipo]}\n\n` +
+        `Para finalizar a compra, abra um ticket clicando abaixo!\n` +
+        `> ℹ️ Sujeito a mudança.`
+      ))
+      .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — VIP System`))
+      .addActionRowComponents(new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setURL("https://discord.com/channels/1449061779060687063/1449068500567068804").setLabel("Abrir Ticket").setStyle(ButtonStyle.Link).setEmoji("🎫")
+      ));
+    return interaction.reply({ components: [c], flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 });
+  }
+
   if (interaction.isStringSelectMenu() && interaction.customId === "ticket_select") {
     const tipo = interaction.values[0];
     const c = new ContainerBuilder()
@@ -1988,7 +2043,7 @@ async function handleInteraction(interaction) {
     ticketOpening.delete(user.id);
 
     const dateStr = getBRT();
-    ticketData.set(ticketCh.id, { ticketName, openerId: user.id, label, dateStr, claimerId: null, ratedSent: false, isCompra, createdAt: Date.now(), reminderSent: false });
+    ticketData.set(ticketCh.id, { ticketName, openerId: user.id, label, dateStr, claimerId: null, ratedSent: false, isCompra, createdAt: Date.now(), reminderSent: false, lastActivity: Date.now() });
     saveTicketData(ticketData);
 
     interaction.editReply({ content: `✅ Ticket criado: <#${ticketCh.id}>` }).catch(() => {});
@@ -2448,6 +2503,36 @@ async function handleInteraction(interaction) {
     const cargoBought = safeCargo !== "null" ? decodeURIComponent(safeCargo) : null;
     const ticketType  = safeType  !== "null" ? decodeURIComponent(safeType)  : "Desconhecido";
 
+    const modal = new ModalBuilder()
+      .setCustomId(`rate_reason|${ticketName}|${openerId}|${claimerId}|${safeType}|${safeCargo}|${nota}`)
+      .setTitle(`Avaliação — ${nota} estrela${nota !== 1 ? "s" : ""}`);
+
+    modal.addComponents(new ActionRowBuilder().addComponents(
+      new TextInputBuilder()
+        .setCustomId("rate_motivo")
+        .setLabel("Por que você deu essa nota?")
+        .setStyle(TextInputStyle.Paragraph)
+        .setPlaceholder("Descreva brevemente sua experiência com o atendimento...")
+        .setRequired(true)
+        .setMaxLength(500)
+    ));
+
+    return interaction.showModal(modal);
+  }
+
+  if (interaction.isModalSubmit() && interaction.customId.startsWith("rate_reason|")) {
+    const parts      = interaction.customId.split("|");
+    const ticketName = parts[1];
+    const openerId   = parts[2];
+    const claimerId  = parts[3];
+    const safeType   = parts[4];
+    const safeCargo  = parts[5];
+    const nota       = parseInt(parts[6]);
+    const motivo     = interaction.fields.getTextInputValue("rate_motivo");
+
+    const cargoBought = safeCargo !== "null" ? decodeURIComponent(safeCargo) : null;
+    const ticketType  = safeType  !== "null" ? decodeURIComponent(safeType)  : "Desconhecido";
+
     await interaction.deferUpdate();
 
     const stars   = "⭐".repeat(nota);
@@ -2458,7 +2543,7 @@ async function handleInteraction(interaction) {
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## ✅ Avaliação Enviada!`))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-        `Obrigado pelo seu feedback!\n\n**Sua nota:** ${stars} **(${nota}/5)**\n**Ticket:** \`${ticketName}\``
+        `Obrigado pelo seu feedback!\n\n**Sua nota:** ${stars} **(${nota}/5)**\n**Ticket:** \`${ticketName}\`\n**Motivo:** ${motivo}`
       ))
       .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`));
@@ -2481,6 +2566,7 @@ async function handleInteraction(interaction) {
           (cargoBought ? `**Cargo Comprado:** ${cargoBought}\n` : "") +
           `**Membro:** <@${openerId}>\n` +
           `**Nota:** ${stars} **(${nota}/5)**\n` +
+          `**Motivo da Avaliação:** ${motivo}\n` +
           `**Staff:** <@${claimerId}>\n` +
           `**Data:** ${dateStr}`
         ))
@@ -2509,7 +2595,7 @@ function buildRatingDM({ ticketName, openerId, claimerId, closerId, dateStr, tic
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(extraInfo))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`⭐ **Como foi o nosso atendimento?**\nAvalie clicando em uma das opções abaixo:`))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`⭐ **Como foi o nosso atendimento?**\nClique em uma estrela abaixo e depois escreva o motivo da sua nota:`))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Ticket System`))
     .addActionRowComponents(new ActionRowBuilder().addComponents(
@@ -2595,15 +2681,29 @@ async function cmdRules(channel) {
 async function cmdBooster(channel) {
   const c = new ContainerBuilder()
     .addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(BANNERS.booster)))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## ✨ Benefícios Boosters`))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## 💎 Benefícios Exclusivos — Server Booster`))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `Agradecemos a todos que impulsionam o servidor! 💖\n\n**💎 Vantagens:**\n` +
-      `> • Cargo __exclusivo__ de Booster\n> • **25 Robux** por boost\n> • Mais chances em **sorteios**\n> • Destaque especial no servidor`
+      `Agradecemos a todos que impulsionam o servidor! 💖\n\n` +
+      `**💎 Vantagens:**\n` +
+      `> • Cargo __exclusivo__ de Booster\n` +
+      `> • **25 Robux** por boost\n` +
+      `> • Mais chances em **sorteios**\n` +
+      `> • Destaque especial no servidor\n` +
+      `> • **Escolha 1 cargo permanente:** 🔍 Olheiro **|** ⚔️ Scrim Hoster **|** 📸 Pic Perm\n` +
+      `> • **25% de desconto** em bail\n` +
+      `> • Sem cooldown nos chats\n` +
+      `> • Atendimento prioritário nos tickets\n` +
+      `> • Enviar fotos em qualquer canal\n` +
+      `> • **Desconto especial** na compra de VIPs`
     ))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-      `**⚠️ Avisos:**\n> • Válido enquanto o boost estiver __ativo__\n> • Benefícios podem mudar conforme o servidor evolui\n> • Abra um ticket para resgatar`
+      `**⚠️ Avisos:**\n` +
+      `> • Válido enquanto o boost estiver __ativo__\n` +
+      `> • O cargo permanente é mantido **enquanto boostar**\n` +
+      `> • Benefícios podem mudar conforme o servidor evolui\n` +
+      `> • Abra um ticket para resgatar`
     ))
     .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Server Booster`))
@@ -2611,6 +2711,64 @@ async function cmdBooster(channel) {
       new ButtonBuilder().setURL("https://discord.com/channels/1449061779060687063/1449068500567068804").setLabel("Resgatar Benefícios").setStyle(ButtonStyle.Link).setEmoji("📩")
     ));
   await channel.send({ components: [c], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
+}
+
+async function cmdVips(channel) {
+  const c = new ContainerBuilder()
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`## <:PAFO:1455732882235719862> Vips PAFO`))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `**<:vip_bronze:1479602783954141298> Vip Bronze**\n` +
+      `> • Enviar Pic perm no chat-geral\n` +
+      `> • Prioridade no ticket\n` +
+      `> • 10% de desconto em bails\n` +
+      `> • Cargo destacado\n` +
+      `> • 5% de desconto na loja-pafo\n` +
+      `> • Acesso a área vip da pafo`
+    ))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `**<:prata:1479606442507108524> Vip Silver**\n` +
+      `> • Prioridade nos form da pafo\n` +
+      `> • 10% de desconto na loja da pafo\n` +
+      `> • 20% de desconto na bail\n` +
+      `> • Fazer parceria sem ter o req\n` +
+      `> • Cargo destacado\n` +
+      `> • 15% de chance a mais de ganhar o sorteio`
+    ))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `**<:vip_ouro:1479606540926189670> Vip Golden**\n` +
+      `> • Escolher 1 cargo entre olheiro e scrim hoster (perm)\n` +
+      `> • Contato com a admistração\n` +
+      `> • Atendimento rápido\n` +
+      `> • Cargo exclusivo\n` +
+      `> • Direito a 2 drops por dia\n` +
+      `> • Pular o cooldown dos chats\n` +
+      `> • 30% de desconto em bail\n` +
+      `> • 15% de desconto na loja da pafo\n` +
+      `> • 30% de chance a mais de ganhar o sorteio`
+    ))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Large).setDivider(true))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+      `**Preços <:Robux:1463175023366897798> — <:pix:1476995676247298190>**\n\n` +
+      `**<:Robux:1463175023366897798> Robux**\n` +
+      `> <:vip_bronze:1479602783954141298> Vip Bronze — **250 <:Robux:1463175023366897798>**\n` +
+      `> <:prata:1479606442507108524> Vip Silver — **350 <:Robux:1463175023366897798>**\n` +
+      `> <:vip_ouro:1479606540926189670> Vip Golden — **500 <:Robux:1463175023366897798>**\n\n` +
+      `**<:pix:1476995676247298190> Pix**\n` +
+      `> <:vip_bronze:1479602783954141298> Vip Bronze — **R$ 10,00 <:pix:1476995676247298190>**\n` +
+      `> <:prata:1479606442507108524> Vip Silver — **R$ 17,00 <:pix:1476995676247298190>**\n` +
+      `> <:vip_ouro:1479606540926189670> Vip Golden — **R$ 25,00 <:pix:1476995676247298190>**`
+    ))
+    .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ℹ️ Sujeito a mudança.`))
+    .addActionRowComponents(new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("vip_buy_bronze").setLabel("Comprar Bronze").setStyle(ButtonStyle.Secondary).setEmoji({ id:"1479602783954141298", name:"vip_bronze" }),
+      new ButtonBuilder().setCustomId("vip_buy_silver").setLabel("Comprar Silver").setStyle(ButtonStyle.Secondary).setEmoji({ id:"1479606442507108524", name:"prata" }),
+      new ButtonBuilder().setCustomId("vip_buy_golden").setLabel("Comprar Golden").setStyle(ButtonStyle.Secondary).setEmoji({ id:"1479606540926189670", name:"vip_ouro" })
+    ));
+  await channel.send({ content: "|| @everyone ||", components: [c], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
 }
 
 async function cmdInfo(channel) {
