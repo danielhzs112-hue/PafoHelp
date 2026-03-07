@@ -2768,8 +2768,8 @@ async function cmdVips(channel) {
       new ButtonBuilder().setCustomId("vip_buy_silver").setLabel("Comprar Silver").setStyle(ButtonStyle.Secondary).setEmoji({ id:"1479606442507108524", name:"prata" }),
       new ButtonBuilder().setCustomId("vip_buy_golden").setLabel("Comprar Golden").setStyle(ButtonStyle.Secondary).setEmoji({ id:"1479606540926189670", name:"vip_ouro" })
     ));
-  await channel.send({ content: "|| @everyone ||", components: [c], flags: MessageFlags.IsComponentsV2 }).catch(console.error);
-}
+await channel.send({ content: "|| @everyone ||" }).catch(console.error);
+await channel.send({ components: [c], flags: MessageFlags.IsComponentsV2 }).catch(console.error);}
 
 async function cmdInfo(channel) {
   const c = new ContainerBuilder()
