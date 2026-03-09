@@ -640,6 +640,11 @@ async function registerSlashCommands() {
       .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
       .toJSON(),
 
+      new SlashCommandBuilder()
+  .setName("cleardm")
+  .setDescription("Limpa as mensagens do bot na sua DM")
+  .toJSON(),
+
     new SlashCommandBuilder()
       .setName("dropleaderboard")
       .setDescription("Mostra o ranking dos 10 melhores vencedores de drops")
@@ -1299,6 +1304,26 @@ client.on("interactionCreate", (i) => handleInteraction(i).catch(e => {
 
 async function handleInteraction(interaction) {
 
+  if (interaction.isChatInputCommand() && interaction.commandName === "cleardm") {
+  await interaction.reply({ content: "🧹 Limpando mensagens do bot na sua DM...", flags: MessageFlags.Ephemeral });
+  try {
+    const dmChannel = await interaction.user.createDM().catch(() => null);
+    if (!dmChannel) return interaction.editReply({ content: "❌ Não foi possível acessar sua DM." });
+    const msgs = await dmChannel.messages.fetch({ limit: 50 }).catch(() => null);
+    if (!msgs) return interaction.editReply({ content: "❌ Não foi possível buscar mensagens." });
+    let count = 0;
+    for (const [, msg] of msgs) {
+      if (msg.author.id === client.user.id) {
+        await msg.delete().catch(() => {});
+        count++;
+      }
+    }
+    return interaction.editReply({ content: `✅ ${count} mensagem(ns) apagada(s) da sua DM.` });
+  } catch {
+    return interaction.editReply({ content: "❌ Erro ao limpar DMs." });
+  }
+}
+
   if (interaction.isChatInputCommand() && interaction.commandName === "drop") {
     if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator))
       return interaction.reply({ content: "❌ Apenas administradores podem usar este comando.", flags: MessageFlags.Ephemeral });
@@ -1328,43 +1353,59 @@ async function handleInteraction(interaction) {
     return interaction.editReply({ components: [container], flags: MessageFlags.IsComponentsV2 });
   }
 
-  if (interaction.isStringSelectMenu() && interaction.customId.startsWith("drop_claim_")) {
-    const userId = interaction.customId.replace("drop_claim_", "");
-    if (interaction.user.id !== userId) return interaction.reply({ content: "❌ Este drop não é seu.", flags: MessageFlags.Ephemeral });
+if (interaction.isStringSelectMenu() && interaction.customId.startsWith("drop_claim_")) {
+  const userId = interaction.customId.replace("drop_claim_", "");
+  if (interaction.user.id !== userId) return interaction.reply({ content: "❌ Este drop não é seu.", flags: MessageFlags.Ephemeral });
 
-    await interaction.deferUpdate();
-    const roleId = interaction.values[0];
+  await interaction.deferUpdate();
+  const roleId = interaction.values[0];
 
-    const guild = await client.guilds.fetch(GUILD_ID).catch(() => null);
-    if (!guild) return;
-    const member = await guild.members.fetch(userId).catch(() => null);
-    if (!member) return;
+  const guild = await client.guilds.fetch(GUILD_ID).catch(() => null);
+  if (!guild) return;
+  const member = await guild.members.fetch(userId).catch(() => null);
+  if (!member) return;
 
-    try {
-      await member.roles.add(roleId);
-      const dias = 5;
-      const expiresAt = Date.now() + dias * 86_400_000;
-      const data = loadTempRoles().filter(e => !(e.userId === userId && e.roleId === roleId));
-      data.push({ userId, roleId, guildId: GUILD_ID, expiresAt, days: dias });
-      saveTempRoles(data);
+  try {
+    await member.roles.add(roleId);
+    const dias = 5;
+    const expiresAt = Date.now() + dias * 86_400_000;
+    const data = loadTempRoles().filter(e => !(e.userId === userId && e.roleId === roleId));
+    data.push({ userId, roleId, guildId: GUILD_ID, expiresAt, days: dias });
+    saveTempRoles(data);
 
-      const confirmC = new ContainerBuilder()
-        .addTextDisplayComponents(new TextDisplayBuilder().setContent(
-          `## ✅ Drop Resgatado com Sucesso!\n\n` +
-          `Você recebeu o cargo <@&${roleId}>.\n` +
-          `> ⏳ **Duração:** 5 dias\n` +
-          `> ⚠️ O cargo será removido automaticamente após esse período.`
-        ))
-        .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
-        .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Drops System`));
+    const confirmC = new ContainerBuilder()
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(
+        `## ✅ Drop Resgatado com Sucesso!\n\n` +
+        `Você recebeu o cargo <@&${roleId}>.\n` +
+        `> ⏳ **Duração:** 5 dias\n` +
+        `> ⚠️ O cargo será removido automaticamente após esse período.`
+      ))
+      .addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# PAFO — Drops System`));
 
-      await interaction.message.edit({ components: [confirmC], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
-    } catch (error) {
-      console.error("Erro ao entregar cargo de drop:", error);
-      await interaction.followUp({ content: "Houve um erro ao tentar entregar o seu cargo. Contacte um administrador.", flags: MessageFlags.Ephemeral });
-    }
-    return;
+    await interaction.message.edit({ components: [confirmC], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+
+    const dmExpireMs = dias * 86_400_000;
+    setTimeout(async () => {
+      try {
+        const user = await client.users.fetch(userId).catch(() => null);
+        if (!user) return;
+        const dmChannel = await user.createDM().catch(() => null);
+        if (!dmChannel) return;
+        const msgs = await dmChannel.messages.fetch({ limit: 20 }).catch(() => null);
+        if (!msgs) return;
+        for (const [, msg] of msgs) {
+          if (msg.author.id === client.user.id) await msg.delete().catch(() => {});
+        }
+      } catch {}
+    }, dmExpireMs);
+
+  } catch (error) {
+    console.error("Erro ao entregar cargo de drop:", error);
+    await interaction.followUp({ content: "Houve um erro ao tentar entregar o seu cargo. Contacte um administrador.", flags: MessageFlags.Ephemeral });
   }
+  return;
+}
 
   if (interaction.isChatInputCommand() && interaction.commandName === "setroletemp") {
     if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator))
